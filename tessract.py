@@ -13,7 +13,7 @@ pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tessera
 
 
 
-img = Image.open("C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_3.png")
+img = Image.open("C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_5.jpg")
 text = pytesseract.image_to_string(img, lang='ben+eng')  # 'ben' = Bengali
 print("Tesseract OCR Result:\n", text)
 

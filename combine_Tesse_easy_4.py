@@ -4,7 +4,7 @@ import easyocr
 import re
 
 # Image and Tesseract path
-img_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/enhanced images/cropped4.jpg"
+img_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_5.jpg"
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # Define fields and regex
