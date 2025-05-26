@@ -235,7 +235,7 @@ image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
 for filename in os.listdir(folder_path):
     if any(filename.lower().endswith(ext) for ext in image_extensions):
         image_path = os.path.join(folder_path, filename)
-        print(f"\nProcessing image: {filename}")
+        #print(f"\nProcessing image: {filename}")
 
         # Read and convert the image
         img = cv2.imread(image_path)
@@ -243,11 +243,11 @@ for filename in os.listdir(folder_path):
         preprocessed_image, original_image = preprocess_before_crop(rotate)
         #img = cv2.imread(image_path)
         if preprocessed_image is None:
-            print("Could not read image.")
+            #print("Could not read image.")
             continue
         #img_pil = Image.fromarray(img)
         img_pil = Image.fromarray(preprocessed_image)
 
         # OCR
         text = pytesseract.image_to_string(img_pil, lang='Bengali+eng')
-        print("Tesseract OCR Result:\n", text)
+        #print("Tesseract OCR Result:\n", text)
