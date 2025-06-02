@@ -250,4 +250,4 @@ for filename in os.listdir(folder_path):
 
         # OCR
         text = pytesseract.image_to_string(img_pil, lang='Bengali+eng')
-        #print("Tesseract OCR Result:\n", text)
+        print("Tesseract OCR Result:\n", text)

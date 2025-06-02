@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 # Load image
 image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/5.jpg"
-reader = easyocr.Reader(['bn'])  # Bengali + English
+reader = easyocr.Reader(['bn','en'])  # Bengali + English
 
 results = reader.readtext(image_path)
 

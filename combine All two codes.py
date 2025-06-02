@@ -64,7 +64,7 @@ def extract_fields_code1(text):
         match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:
             value = match.group(1).strip()
-            if key == 'ID NO':
+            if key == 'IDNO':
                 value = value.replace(" ", "")  # Remove spaces from NID
             extracted[key] = value
         else:
@@ -235,8 +235,8 @@ def extract_fields_code2(text):
     extracted["স্বামী"] = clean_bangla_name(extracted["স্বামী"])
     extracted["স্ত্রী"] = clean_bangla_name(extracted["স্ত্রী"])
     extracted["Name"] = clean_english_name(extracted["Name"])
-    extracted["Date of Birth"] = clean_date_of_birth(extracted["Date of Birth"])
-    extracted["ID NO"] = clean_id_no(extracted["ID NO"])
+    extracted["DateOfBirth"] = clean_date_of_birth(extracted["DateOfBirth"])
+    extracted["IDNO"] = clean_id_no(extracted["IDNO"])
     fields_to_validate = ['নাম', 'পিতা', 'মাতা', 'স্বামী', 'স্ত্রী']
     for field in fields_to_validate:
         if contains_english(extracted[field]):
@@ -285,9 +285,9 @@ def extract_fields_code2(text):
 def remove_special_chars(text, field):
     if text == "Not found" or not text:
         return text
-    if field == "Date of Birth":
+    if field == "DateOfBirth":
         return re.sub(r"[^0-9A-Za-z\s\-/]", "", text).strip()
-    if field == "ID NO":
+    if field == "IDNO":
         return re.sub(r"[^0-9]", "", text).strip()
     return re.sub(r"[^A-Za-z\s\.\u0980-\u09FF]", "", text).strip()
 
@@ -304,10 +304,10 @@ def compare_outputs(t1, e1, t2, e2, field):
     outputs = [t1_clean, e1_clean, t2_clean, e2_clean]
 
     # print("\n================= OCR COMPARISON =================")
-    # print(f"{'':<17} t1                        | e1                        | t2                        | e2")
-    # print(f"{'Raw Outputs':<17}: {t1:<25} | {e1:<25} | {t2:<25} | {e2}")
-    # print(f"{'Cleaned Outputs':<17}: {t1_clean:<25} | {e1_clean:<25} | {t2_clean:<25} | {e2_clean}")
-    # print("==================================================\n")
+    print(f"{'':<17} t1                        | e1                        | t2                        | e2")
+    print(f"{'Raw Outputs':<17}: {t1:<25} | {e1:<25} | {t2:<25} | {e2}")
+    print(f"{'Cleaned Outputs':<17}: {t1_clean:<25} | {e1_clean:<25} | {t2_clean:<25} | {e2_clean}")
+    print("==================================================\n")
 
 
     # Condition 1: All "Not found"
