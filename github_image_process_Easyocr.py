@@ -226,29 +226,41 @@ def preprocess_before_crop(scan_path):
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # Folder containing images
-folder_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/"
+#folder_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/"
 reader = easyocr.Reader(['en', 'bn'])  # Bengali + English
+image_path="C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_1.png"
+# Read and convert the image
+img = cv2.imread(image_path)
+rotate = dskew(img)
+preprocessed_image, original_image = preprocess_before_crop(rotate)
+results = reader.readtext(preprocessed_image)
+
+# Print and visualize
+for (bbox, text, prob) in results:
+    print(f"{text}")
+
+
 # Supported image extensions
-image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
-
-# Loop through each file in the folder
-for filename in os.listdir(folder_path):
-    if any(filename.lower().endswith(ext) for ext in image_extensions):
-        image_path = os.path.join(folder_path, filename)
-        print(f"\nProcessing image: {filename}")
-
-        # Read and convert the image
-        img = cv2.imread(image_path)
-        rotate = dskew(img)
-        preprocessed_image, original_image = preprocess_before_crop(rotate)
-        #img = cv2.imread(image_path)
-        if preprocessed_image is None:
-            print("Could not read image.")
-            continue
-        #img_pil = Image.fromarray(img)
-
-        results = reader.readtext(preprocessed_image)
-
-        # Print and visualize
-        for (bbox, text, prob) in results:
-            print(f"{text}")
+# image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
+#
+# # Loop through each file in the folder
+# for filename in os.listdir(folder_path):
+#     if any(filename.lower().endswith(ext) for ext in image_extensions):
+#         image_path = os.path.join(folder_path, filename)
+#         print(f"\nProcessing image: {filename}")
+#
+#         # Read and convert the image
+#         img = cv2.imread(image_path)
+#         rotate = dskew(img)
+#         preprocessed_image, original_image = preprocess_before_crop(rotate)
+#         #img = cv2.imread(image_path)
+#         if preprocessed_image is None:
+#             print("Could not read image.")
+#             continue
+#         #img_pil = Image.fromarray(img)
+#
+#         results = reader.readtext(preprocessed_image)
+#
+#         # Print and visualize
+#         for (bbox, text, prob) in results:
+#             print(f"{text}")

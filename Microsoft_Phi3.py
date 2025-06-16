@@ -15,7 +15,7 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 
 # Create text-generation pipeline
-llm = pipeline("text-generation", model=model, tokenizer=tokenizer, device=-1)  # device=-1 for CPU
+llm = pipeline("text-generation", model=model, tokenizer=tokenizer)  # device=-1 for CPU
 
 # === OCR TEXT INPUT ===
 ocr_text = """
