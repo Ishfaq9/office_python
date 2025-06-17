@@ -1,20 +1,31 @@
+import os
+import warnings
 from paddleocr import PaddleOCR
-import re
 
-ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False)
 
-#ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, det_db_box_thresh=0.4)
+warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
 
-# Run OCR on image
-results = ocr.ocr("C:/Users/ishfaq.rahman/Desktop/NID Images/6.jpg", cls=True)
-#results = ocr.ocr("C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/cropped.jpg", cls=True)
+ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
 
-# Join all detected text into one string
-all_text = ' '.join([line[1][0] for block in results for line in block])
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_1.png"
+if not os.path.isfile(image_path):
+    raise FileNotFoundError(f"Image file not found: {image_path}")
+
+results = ocr.ocr(image_path, cls=True)
+
+# Correct way to extract text
+all_text = ""
+for line in results[0]:  # First (and only) image
+    text = line[1][0]  # line[1] = [text, confidence]
+    all_text += text + "\n"
+
+print(all_text)
+
+#all_text = ' '.join([line[1][0] for block in results for line in block]) if results and results[0] else ""
 
 # Show raw OCR output
-print("----- RAW TEXT -----")
-print(all_text)
+# print("----- RAW TEXT -----")
+# print(all_text)
 
 # # Extract fields using regex
 # def extract_field(pattern, text):
