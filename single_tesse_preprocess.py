@@ -465,28 +465,92 @@ def clean_english_field(text):
     return cleaned if cleaned else "Not found"
 
 
-def process_t1(t1, field):
+def compare_outputs(e1, e2, e3, field):
+    e1 = "Not found" if e1 == "No data found" else e1
+    e2 = "Not found" if e2 == "No data found" else e2
+    e3 = "Not found" if e3 == "No data found" else e3
 
-    t1 = "Not found" if t1 == "No data found" else t1
-
-    t1 = "Not found" if not t1 or t1 == "" else t1
+    outputs_raw = [e1, e2, e3]
+    outputs = []
+    for val in outputs_raw:
+        if not val or val == "":
+            outputs.append("Not found")
+        else:
+            outputs.append(val)
 
     if field == "DateOfBirth":
-        t1 = clean_date_field(t1)
+        outputs = [clean_date_field(val) for val in outputs]
+        outputs_raw = [clean_date_field(val) for val in outputs_raw]
 
-    t1 = clean_all_special_chars(t1)
+    outputs_cleaned = [clean_all_special_chars(val) for val in outputs]
+    outputs_raw = [clean_all_special_chars(val) for val in outputs_raw]
 
     if field in ['নাম', 'পিতা', 'মাতা', 'স্বামী', 'স্ত্রী']:
-        t1 = clean_bangla_field(t1)
+        outputs_cleaned = [clean_bangla_field(val) for val in outputs_cleaned]
+        outputs_raw = [clean_bangla_field(val) for val in outputs_raw]
     elif field == "Name":
-        t1 = clean_english_field(t1)
+        outputs_cleaned = [clean_english_field(val) for val in outputs_cleaned]
+        outputs_raw = [clean_english_field(val) for val in outputs_raw]
 
-    t1 = remove_special_chars(t1, field)
+    outputs_cleaned = [remove_special_chars(val, field) for val in outputs_cleaned]
 
-    if t1 != "Not found" and len(t1.split()) == 1 and len(t1) < 3:
-        t1 = "Not found"
+    outputs_final = []
+    for val in outputs_cleaned:
+        if val != "Not found" and len(val.split()) == 1 and len(val) < 3:
+            outputs_final.append("Not found")
+        else:
+            outputs_final.append(val)
 
-    return t1
+    print("\n================= OCR COMPARISON =================")
+    print(f"{'':<17} e1                        | e2                        | e3")
+    print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]}")
+    print(f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]}")
+    print("==================================================\n")
+
+    if all(val == "Not found" for val in outputs_final):
+        return "Not found"
+
+    valid_outputs = [val for val in outputs_final if val != "Not found"]
+    if len(valid_outputs) == 1:
+        return valid_outputs[0]
+
+    # Find common substrings to identify matches
+    def find_longest_common_substring(str1, str2):
+        str1, str2 = str1.lower(), str2.lower()
+        m, n = len(str1), len(str2)
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+        length, end_pos = 0, 0
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if str1[i-1] == str2[j-1]:
+                    dp[i][j] = dp[i-1][j-1] + 1
+                    if dp[i][j] > length:
+                        length = dp[i][j]
+                        end_pos = i
+        return str1[end_pos - length:end_pos] if length >= 3 else ""
+
+    # Check for common substrings among pairs
+    pairs = [(0, 1, valid_outputs[0], valid_outputs[1]), (0, 2, valid_outputs[0], valid_outputs[2]), (1, 2, valid_outputs[1], valid_outputs[2])] if len(valid_outputs) == 3 else []
+    matching_outputs = []
+    common_substring = ""
+
+    for i, j, val1, val2 in pairs:
+        substring = find_longest_common_substring(val1, val2)
+        if substring and len(substring) >= 3:  # Consider substrings of 3+ chars as matches
+            common_substring = substring
+            if val1.lower().find(substring) != -1 and val1 not in matching_outputs:
+                matching_outputs.append(val1)
+            if val2.lower().find(substring) != -1 and val2 not in matching_outputs:
+                matching_outputs.append(val2)
+
+    # If we have matching outputs, select the one with most words, then most characters
+    if matching_outputs:
+        best_val = max(matching_outputs, key=lambda x: (len(x.split()), len(x.replace(" ", ""))))
+        return best_val
+
+    # If no matches or all unique, select the one with most words, then most characters
+    best_val = max(valid_outputs, key=lambda x: (len(x.split()), len(x.replace(" ", ""))))
+    return best_val
 
 
 def process_image(image_path):
@@ -514,7 +578,7 @@ def process_image(image_path):
     tesseract_results2 = extract_fields_code2(tesseract_text2)
 
     easyocr_text2 = get_easyocr_text(preprocessed_img)
-    # print(easyocr_text2)
+    #print(easyocr_text2)
     easyocr_results2 = extract_fields_code2(easyocr_text2)
 
     # Code 3 Processing with Preprocessing just rotate
@@ -542,17 +606,17 @@ def process_image(image_path):
         e2 = easyocr_results2.get(field, "Not found")
         t3 = tesseract_results3.get(field, "Not found")
         e3 = easyocr_results3.get(field, "Not found")
-        final_results[field] = process_t1(t2,field)
+        final_results[field] = compare_outputs(t1,t2,t3,field)
 
-    # print("\nFinal Combined Results:")
-    # for field, value in final_results.items():
-    #     print(f"{field}: {value}")
+    print("\nFinal Combined Results:")
+    for field, value in final_results.items():
+        print(f"{field}: {value}")
 
     return final_results
 
 
 #Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/13.jpg"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_4.png"
 final_results = process_image(image_path)
 
 # Example Usage
