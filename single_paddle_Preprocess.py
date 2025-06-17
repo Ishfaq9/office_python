@@ -607,7 +607,7 @@ def process_image(image_path):
 
 
 #Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_1.png"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/crooped images/NID_7.png"
 final_results = process_image(image_path)
 
 # Example Usage

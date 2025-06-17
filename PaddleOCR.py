@@ -7,7 +7,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp
 
 ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
 
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_1.png"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_5.jpg"
 if not os.path.isfile(image_path):
     raise FileNotFoundError(f"Image file not found: {image_path}")
 

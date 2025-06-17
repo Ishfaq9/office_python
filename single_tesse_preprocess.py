@@ -574,7 +574,7 @@ def process_image(image_path):
     rotated_img = dskew(img_cv2)
     preprocessed_img, _ = preprocess_before_crop(rotated_img)
     tesseract_text2 = get_tesseract_ocr(preprocessed_img)
-    # print(tesseract_text2)
+    print(tesseract_text2)
     tesseract_results2 = extract_fields_code2(tesseract_text2)
 
     easyocr_text2 = get_easyocr_text(preprocessed_img)
@@ -586,13 +586,13 @@ def process_image(image_path):
     rotated_img2 = dskew(img3)
     rotated_img3 = Image.fromarray(rotated_img2)
     tesseract_text3 = pytesseract.image_to_string(rotated_img3, lang='ben+eng')
-    # print(tesseract_text3)
+    print(tesseract_text3)
     tesseract_text3 = clean_header_text(tesseract_text3)
     tesseract_results3 = extract_fields_code1(tesseract_text3)
     tesseract_results3 = infer_name_from_lines(tesseract_text3, tesseract_results3)
 
     results = get_easyocr_text(rotated_img2)
-    # print(results)
+    print(results)
     easyocr_text3 = results
     easyocr_text3 = clean_header_text(easyocr_text3)
     easyocr_results3 = extract_fields_code1(easyocr_text3)
@@ -616,7 +616,7 @@ def process_image(image_path):
 
 
 #Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_4.png"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/crooped images/NID_2.png"
 final_results = process_image(image_path)
 
 # Example Usage
