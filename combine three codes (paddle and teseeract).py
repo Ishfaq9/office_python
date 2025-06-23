@@ -1,29 +1,18 @@
 import cv2
 import numpy as np
-import os
 import pytesseract
-import easyocr
 import re
-import json
-import sys
 from PIL import Image
 from math import atan, degrees, radians, sin, cos, fabs
 import warnings
 from paddleocr import PaddleOCR
-
-# sys.stdout.reconfigure(encoding='utf-8')
-# # # Get image path from argument
-# if len(sys.argv) < 2:
-#     print(json.dumps({"error": "Image path is required"}))
-#     sys.exit(1)
+from datetime import datetime
 
 # Tesseract path
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-#reader = easyocr.Reader(['en', 'bn'], gpu=False)
-#reader = easyocr.Reader(['en', 'bn'],gpu=False, model_storage_directory =r'C:\easy\model',user_network_directory =r'C:\easy\network')
+
 warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
 ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
-
 
 # Code 1 Regex Patterns
 fields_code1 = {
@@ -45,7 +34,7 @@ fields_code2 = {
     'মাতা': r'মাতা[:：]*\s*([^\n:]+)',
     'স্বামী': r'(?:স্বামী|স্বা[:;মী-]*|husband|sami)[:;\s-]*(.+?)(?=\n|$|নাম|Name|পিতা|মাতা|স্ত্রী|Date|ID)',
     'স্ত্রী': r'(?:স্ত্রী|স্ত্র[:;ী-]*|wife|stri)[:;\s-]*(.+?)(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|Date|ID)',
-    'DateOfBirth': r'(?:Date of Birth|DOB|Date|Birth)[:;\s-]*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{4})(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|স্ত্রী|ID)',
+    'DateOfBirth': r'(?:Date of Birth|Date ofBirth|DOB|Date|Birth)[:;\s-]*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{4})(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|স্ত্রী|ID)',
     'IDNO': r'(?:ID\s*NO|NID\s*No\.?|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})'
 }
 
@@ -220,13 +209,6 @@ def get_tesseract_ocr(image):
     ocr_text = pytesseract.image_to_string(img, lang='ben+eng')
     return ocr_text
 
-
-def get_easyocr_text(image_path):
-    # results = reader.readtext(image_path)
-    # ocr_text = "\n".join([text for _, text, _ in results])
-    # return ocr_text
-    return 'ocr_text'
-
 def get_paddle_ocr(image):
     results = ocr.ocr(image_path, cls=True)
     all_text = ""
@@ -235,6 +217,13 @@ def get_paddle_ocr(image):
         all_text += text + "\n"
     #all_text=' '.join([line[1][0] for block in results for line in block]) if results and results[0] else ""
     return all_text
+
+
+def get_easyocr_text(image_path):
+    # results = reader.readtext(image_path)
+    # ocr_text = "\n".join([text for _, text, _ in results])
+    # return ocr_text
+    return ''
 
 
 def contains_english(text):
@@ -447,11 +436,35 @@ def remove_special_chars(text, field):
 def clean_date_field(text):
     if text == "Not found" or not text:
         return text
-    date_pattern = r'^(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{4})\s*(.*)$'
-    match = re.match(date_pattern, text, re.IGNORECASE)
+    # Define month mapping for standardization
+    month_map = {
+        'jan': 'Jan', 'feb': 'Feb', 'mar': 'Mar', 'apr': 'Apr',
+        'may': 'May', 'jun': 'Jun', 'jul': 'Jul', 'aug': 'Aug',
+        'sep': 'Sep', 'oct': 'Oct', 'nov': 'Nov', 'dec': 'Dec',
+        'january': 'Jan', 'february': 'Feb', 'march': 'Mar', 'april': 'Apr',
+        'may': 'May', 'june': 'Jun', 'july': 'Jul', 'august': 'Aug',
+        'september': 'Sep', 'october': 'Oct', 'november': 'Nov', 'december': 'Dec'
+    }
+
+    date_pattern = r'(\d{1,2})\s*[-/\s]?([A-Za-z]+)\s*[-/\s]?(\d{4})'
+    match = re.match(date_pattern, text.strip(), re.IGNORECASE)
     if match:
-        return match.group(1).strip()
-    return text
+        day, month, year = match.groups()
+        # Standardize month to first three letters
+        month = month[:3].lower()
+        if month in month_map:
+            month = month_map[month]
+        else:
+            return "Invalid"
+        current_year = datetime.now().year
+        if not (1800 <= int(year) <= current_year - 18):
+            return "Invalid"
+        # Validate day (1–31)
+        day = int(day)
+        if not (1 <= day <= 31):
+            return "Invalid"
+        return f"{day} {month} {year}"
+    return "Invalid"
 
 
 def clean_all_special_chars(text):
@@ -476,18 +489,17 @@ def clean_english_field(text):
     words = text.split()
     cleaned_words = [word for word in words if not re.search(r'[\u0980-\u09FF]', word)]
     cleaned = " ".join(cleaned_words).strip()
+    cleaned = re.sub(r'\.(\w)', r'. \1', cleaned)
     return cleaned if cleaned else "Not found"
 
 
-def compare_outputs(t1, e1, t2, e2, t3, e3, field):
+def compare_outputs(t1, t2, t3, p1, field):
     t1 = "Not found" if t1 == "No data found" else t1
-    e1 = "Not found" if e1 == "No data found" else e1
     t2 = "Not found" if t2 == "No data found" else t2
-    e2 = "Not found" if e2 == "No data found" else e2
     t3 = "Not found" if t3 == "No data found" else t3
-    e3 = "Not found" if e3 == "No data found" else e3
+    p1 = "Not found" if p1 == "No data found" else p1
 
-    outputs_raw = [t1, e1, t2, e2, t3, e3]
+    outputs_raw = [t1, t2, t3, p1]
     outputs = []
     for val in outputs_raw:
         if not val or val == "":
@@ -518,14 +530,11 @@ def compare_outputs(t1, e1, t2, e2, t3, e3, field):
         else:
             outputs_final.append(val)
 
-    print("\n================= OCR COMPARISON =================")
-    print(
-        f"{'':<17} t1                        | e1                        | t2                        | e2                        | t3                        | e3")
-    print(
-        f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]:<25} | {outputs_raw[3]:<25} | {outputs_raw[4]:<25} | {outputs_raw[5]}")
-    print(
-        f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]:<25} | {outputs_final[3]:<25} | {outputs_final[4]:<25} | {outputs_final[5]}")
-    print("==================================================\n")
+    # print("\n================= OCR COMPARISON =================")
+    # print(f"{'':<17} t1                        | t2                        | t3                        | p1")
+    # print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]:<25} | {outputs_raw[3]}")
+    # print(f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]:<25} | {outputs_final[3]}")
+    # print("==================================================\n")
 
     if all(val == "Not found" for val in outputs_final):
         return "Not found"
@@ -545,8 +554,8 @@ def compare_outputs(t1, e1, t2, e2, t3, e3, field):
 
     pairs = [
         (outputs_final[0], outputs_final[3], outputs_raw[0], outputs_raw[3]),
-        (outputs_final[2], outputs_final[5], outputs_raw[2], outputs_raw[5]),
-        (outputs_final[4], outputs_final[1], outputs_raw[4], outputs_raw[1])
+        (outputs_final[1], outputs_final[3], outputs_raw[1], outputs_raw[3]),
+        (outputs_final[2], outputs_final[3], outputs_raw[2], outputs_raw[3])
     ]
     matching_pairs = [(v1, v2, r1, r2) for v1, v2, r1, r2 in pairs if v1 == v2 and v1 != "Not found"]
     if len(matching_pairs) >= 1:
@@ -572,7 +581,7 @@ def compare_outputs(t1, e1, t2, e2, t3, e3, field):
             return best_value
 
     not_found_count = outputs_final.count("Not found")
-    if not_found_count in [4, 5] and len(valid_outputs) in [1, 2]:
+    if not_found_count in [2, 3] and len(valid_outputs) in [1, 2]:
         if len(valid_outputs) == 1:
             return valid_outputs[0]
         words1 = len(valid_outputs[0].split())
@@ -605,12 +614,13 @@ def process_image(image_path):
     tesseract_results1 = extract_fields_code1(tesseract_text1)
     tesseract_results1 = infer_name_from_lines(tesseract_text1, tesseract_results1)
 
+
+    img = cv2.imread(image_path)
     paddle_text1 = get_paddle_ocr(img)
     #print(paddle_text1)
     paddle_text1 = clean_header_text(paddle_text1)
-    paddle_results1 = extract_fields_code1(paddle_text1)
+    paddle_results1 = extract_fields_code2(paddle_text1)
     paddle_results1 = infer_name_from_lines(paddle_text1, paddle_results1)
-
 
     # Code 2 Processing with Preprocessing
     img_cv2 = cv2.imread(image_path)
@@ -619,11 +629,6 @@ def process_image(image_path):
     tesseract_text2 = get_tesseract_ocr(preprocessed_img)
     #print(tesseract_text2)
     tesseract_results2 = extract_fields_code2(tesseract_text2)
-
-
-    paddle_text2 = get_paddle_ocr(preprocessed_img)
-    #print(paddle_text2)
-    paddle_results2 = extract_fields_code1(paddle_text2)
 
 
     # Code 3 Processing with Preprocessing just rotate
@@ -636,24 +641,15 @@ def process_image(image_path):
     tesseract_results3 = infer_name_from_lines(tesseract_text3, tesseract_results3)
 
 
-    paddle_text3 = get_paddle_ocr(rotated_img3)
-    paddle_text3 = clean_header_text(paddle_text3)
-    paddle_results3 = extract_fields_code1(paddle_text3)
-    paddle_results3 = infer_name_from_lines(paddle_text3, paddle_results3)
-
-
-
     final_results = {}
     for field in fields_code1:
         t1 = tesseract_results1.get(field, "Not found")
-        e1 = paddle_results1.get(field, "Not found")
+        p1= paddle_results1.get(field, "Not found")
         t2 = tesseract_results2.get(field, "Not found")
-        e2 = paddle_results2.get(field, "Not found")
         t3 = tesseract_results3.get(field, "Not found")
-        e3 = paddle_results3.get(field, "Not found")
-        final_results[field] = compare_outputs(t1, e1, t2, e2, t3, e3, field)
+        final_results[field] = compare_outputs(t1,t2,t3,p1,field)
 
-    # print("\nFinal Combined Results:")
+    print("\nFinal Combined Results:")
     for field, value in final_results.items():
         print(f"{field}: {value}")
 
@@ -661,7 +657,7 @@ def process_image(image_path):
 
 
 #Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_2.png"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_3.png"
 final_results = process_image(image_path)
 
 # Example Usage
