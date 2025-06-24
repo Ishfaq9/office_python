@@ -1,0 +1,372 @@
+import cv2
+import numpy as np
+import os
+import pytesseract
+import easyocr
+import re
+import json
+import sys
+from PIL import Image
+from math import atan, degrees, radians, sin, cos, fabs
+import warnings
+from paddleocr import PaddleOCR
+
+sys.stdout.reconfigure(encoding='utf-8')
+if len(sys.argv) < 2:
+    print(json.dumps({"error": "Image path is required"}))
+    sys.exit(1)
+
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+reader = easyocr.Reader(['en', 'bn'], gpu=False, model_storage_directory=r'C:\easy\model', user_network_directory=r'C:\easy\network')
+warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
+ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
+
+# Regex Patterns (unchanged)
+fields_code1 = {
+    'নাম': r'নাম[:：]*\s*([^\n:]+)',
+    'Name': r'Name[:：]*\s*([^\n:]+)',
+    'পিতা': r'পিতা[:：]*\s*([^\n:]+)',
+    'মাতা': r'মাতা[:：]*\s*([^\n:]+)',
+    'স্বামী': r'স্বামী[:：]*\s*([^\n:]+)',
+    'স্ত্রী': r'স্ত্রী[:：]*\s*([^\n:]+)',
+    'DateOfBirth': r'Date of Birth[:：]*\s*([^\n:]+)',
+    'IDNO': r'(?:ID\s*NO|NID\s*No\.?|ID|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})'
+}
+
+fields_code2 = {
+    'নাম': r'নাম[:：]*\s*([^\n:]+)',
+    'Name': r'Name[:：]*\s*([^\n:]+)',
+    'পিতা': r'পিতা[:：]*\s*([^\n:]+)',
+    'মাতা': r'মাতা[:：]*\s*([^\n:]+)',
+    'স্বামী': r'(?:স্বামী|স্বা[:;মী-]*|husband|sami)[:;\s-]*(.+?)(?=\n|$|নাম|Name|পিতা|মাতা|স্ত্রী|Date|ID)',
+    'স্ত্রী': r'(?:স্ত্রী|স্ত্র[:;ী-]*|wife|stri)[:;\s-]*(.+?)(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|Date|ID)',
+    'DateOfBirth': r'(?:Date of Birth|DOB|Date|Birth)[:;\s-]*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{4})(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|স্ত্রী|ID)',
+    'IDNO': r'(?:ID\s*NO|NID\s*No\.?|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})'
+}
+
+# All other functions remain unchanged (clean_header_text, infer_name_from_lines, extract_fields_code1, extract_fields_code2, ImgCorrect, dskew, preprocess_before_crop, get_tesseract_ocr, get_easyocr_text, get_paddle_ocr, contains_english, contains_bangla, clean_ocr_text, merge_lines, clean_bangla_name, clean_english_name, clean_date_of_birth, clean_id_no, remove_special_chars, clean_date_field, clean_all_special_chars, clean_bangla_field, clean_english_field)
+
+def compare_outputs(t1, t2, t3, p1, e1, e2, e3, field):
+    # Handle "No data found" cases
+    t1 = "Not found" if t1 == "No data found" else t1
+    t2 = "Not found" if t2 == "No data found" else t2
+    t3 = "Not found" if t3 == "No data found" else t3
+    p1 = "Not found" if p1 == "No data found" else p1
+    e1 = "Not found" if e1 == "No data found" else e1
+    e2 = "Not found" if e2 == "No data found" else e2
+    e3 = "Not found" if e3 == "No data found" else e3
+
+    # Collect raw outputs
+    outputs_raw = [t1, t2, t3, p1, e1, e2, e3]
+    outputs = []
+    for val in outputs_raw:
+        if not val or val == "":
+            outputs.append("Not found")
+        else:
+            outputs.append(val)
+
+    # Field-specific cleaning
+    if field == "DateOfBirth":
+        outputs = [clean_date_field(val) for val in outputs]
+        outputs_raw = [clean_date_field(val) for val in outputs_raw]
+
+    outputs_cleaned = [clean_all_special_chars(val) for val in outputs]
+    outputs_raw = [clean_all_special_chars(val) for val in outputs_raw]
+
+    if field in ['নাম', 'পিতা', 'মাতা', 'স্বামী', 'স্ত্রী']:
+        outputs_cleaned = [clean_bangla_field(val) for val in outputs_cleaned]
+        outputs_raw = [clean_bangla_field(val) for val in outputs_raw]
+    elif field == "Name":
+        outputs_cleaned = [clean_english_field(val) for val in outputs_cleaned]
+        outputs_raw = [clean_english_field(val) for val in outputs_raw]
+
+    outputs_cleaned = [remove_special_chars(val, field) for val in outputs_cleaned]
+
+    # Final output validation
+    outputs_final = []
+    for val in outputs_cleaned:
+        if val != "Not found" and len(val.split()) == 1 and len(val) < 3:
+            outputs_final.append("Not found")
+        else:
+            outputs_final.append(val)
+
+    # Decision logic
+    if all(val == "Not found" for val in outputs_final):
+        return "Not found"
+
+    valid_outputs = [val for val in outputs_final if val != "Not found"]
+    valid_raw = [val for val in outputs_raw if val != "Not found"]
+
+    if len(valid_outputs) == 1:
+        return valid_outputs[0]
+
+    # Check for majority matching
+    value_counts = {}
+    for val in valid_outputs:
+        value_counts[val] = value_counts.get(val, 0) + 1
+    matching_values = [val for val, count in value_counts.items() if count >= 2]
+    if matching_values:
+        return matching_values[0]
+
+    # Pair comparisons (t-p, p-e, t-e)
+    pairs = [
+        (outputs_final[0], outputs_final[3], outputs_raw[0], outputs_raw[3]),  # t1-p1
+        (outputs_final[1], outputs_final[3], outputs_raw[1], outputs_raw[3]),  # t2-p1
+        (outputs_final[2], outputs_final[3], outputs_raw[2], outputs_raw[3]),  # t3-p1
+        (outputs_final[3], outputs_final[4], outputs_raw[3], outputs_raw[4]),  # p1-e1
+        (outputs_final[3], outputs_final[5], outputs_raw[3], outputs_raw[5]),  # p1-e2
+        (outputs_final[3], outputs_final[6], outputs_raw[3], outputs_raw[6]),  # p1-e3
+        (outputs_final[0], outputs_final[4], outputs_raw[0], outputs_raw[4]),  # t1-e1
+        (outputs_final[1], outputs_final[5], outputs_raw[1], outputs_raw[5]),  # t2-e2
+        (outputs_final[2], outputs_final[6], outputs_raw[2], outputs_raw[6]),  # t3-e3
+    ]
+    matching_pairs = [(v1, v2, r1, r2) for v1, v2, r1, r2 in pairs if v1 == v2 and v1 != "Not found"]
+    if matching_pairs:
+        best_value = None
+        max_words = 0
+        has_special = True
+        for v1, _, r1, r2 in matching_pairs:
+            words1 = len(v1.split())
+            special1 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r1))
+            special2 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r2))
+            if not special1 and (not special2 or words1 >= max_words):
+                best_value = v1
+                max_words = words1
+                has_special = special1
+            elif not special2 and words1 >= max_words:
+                best_value = v1
+                max_words = words1
+                has_special = special2
+            elif words1 > max_words:
+                best_value = v1
+                max_words = words1
+        if best_value:
+            return best_value
+
+    # Handle cases with few valid outputs
+    not_found_count = outputs_final.count("Not found")
+    if not_found_count in [5, 6] and len(valid_outputs) in [1, 2]:
+        if len(valid_outputs) == 1:
+            return valid_outputs[0]
+        words1 = len(valid_outputs[0].split())
+        words2 = len(valid_outputs[1].split())
+        return valid_outputs[0] if words1 >= words2 else valid_outputs[1]
+
+    # Prefer outputs with 3 or 4 words
+    unique_outputs = list(set(valid_outputs))
+    if len(unique_outputs) == len(valid_outputs):
+        for val in unique_outputs:
+            word_count = len(val.split())
+            if word_count in [3, 4]:
+                return val
+
+    # Fallback to output with most words
+    max_words = 0
+    best_val = valid_outputs[0] if valid_outputs else "Not found"
+    for val in valid_outputs:
+        words = len(val.split())
+        if words > max_words:
+            max_words = words
+            best_val = val
+    return best_val
+
+def process_image(image_path):
+    # Single PaddleOCR call
+    img = Image.open(image_path)
+    paddle_text = get_paddle_ocr(img)  # Call PaddleOCR once
+    paddle_text_unfiltered = paddle_text  # Store raw, unfiltered PaddleOCR output
+
+    # Code 1 Processing
+    tesseract_text1 = pytesseract.image_to_string(img, lang='ben+eng')
+    tesseract_text1 = clean_header_text(tesseract_text1)
+    tesseract_results1 = extract_fields_code1(tesseract_text1)
+    tesseract_results1 = infer_name_from_lines(tesseract_text1, tesseract_results1)
+
+    # Use unfiltered paddle_text for p1
+    paddle_results1 = extract_fields_code1(paddle_text_unfiltered)  # No clean_header_text
+    paddle_results1 = infer_name_from_lines(paddle_text_unfiltered, paddle_results1)
+
+    easyocr_text1 = get_easyocr_text(image_path)
+    easyocr_text1 = clean_header_text(easyocr_text1)
+    easyocr_results1 = extract_fields_code1(easyocr_text1)
+    easyocr_results1 = infer_name_from_lines(easyocr_text1, easyocr_results1)
+
+    # Code 2 Processing with Preprocessing
+    img_cv2 = cv2.imread(image_path)
+    rotated_img = dskew(img_cv2)
+    preprocessed_img, _ = preprocess_before_crop(rotated_img)
+    tesseract_text2 = get_tesseract_ocr(preprocessed_img)
+    tesseract_results2 = extract_fields_code2(tesseract_text2)
+
+    # Reuse unfiltered paddle_text for p1 (no additional PaddleOCR call)
+    paddle_results2 = extract_fields_code1(paddle_text_unfiltered)
+
+    easyocr_text2 = get_easyocr_text(preprocessed_img)
+    easyocr_results2 = extract_fields_code2(easyocr_text2)
+
+    # Code 3 Processing with Preprocessing just rotate
+    img3 = cv2.imread(image_path)
+    rotated_img2 = dskew(img3)
+    rotated_img3 = Image.fromarray(rotated_img2)
+    tesseract_text3 = pytesseract.image_to_string(rotated_img3, lang='ben+eng')
+    tesseract_text3 = clean_header_text(tesseract_text3)
+    tesseract_results3 = extract_fields_code1(tesseract_text3)
+    tesseract_results3 = infer_name_from_lines(tesseract_text3, tesseract_results3)
+
+    # Reuse unfiltered paddle_text for p1 (no additional PaddleOCR call)
+    paddle_results3 = extract_fields_code1(paddle_text_unfiltered)
+    paddle_results3 = infer_name_from_lines(paddle_text_unfiltered, paddle_results3)
+
+    easyocr_text3 = get_easyocr_text(rotated_img2)
+    easyocr_text3 = clean_header_text(easyocr_text3)
+    easyocr_results3 = extract_fields_code1(easyocr_text3)
+    easyocr_results3 = infer_name_from_lines(easyocr_text3, easyocr_results3)
+
+    final_results = {}
+    for field in fields_code1:
+        t1 = tesseract_results1.get(field, "Not found")
+        t2 = tesseract_results2.get(field, "Not found")
+        t3 = tesseract_results3.get(field, "Not found")
+        p1 = paddle_results1.get(field, "Not found")  # Use single PaddleOCR result
+        e1 = easyocr_results1.get(field, "Not found")
+        e2 = easyocr_results2.get(field, "Not found")
+        e3 = easyocr_results3.get(field, "Not found")
+        final_results[field] = compare_outputs(t1, t2, t3, p1, e1, e2, e3, field)
+
+    return final_results
+
+image_path = sys.argv[1]
+final_results = process_image(image_path)
+print(json.dumps(final_results, ensure_ascii=False))
+
+
+def compare_outputs(t1, t2, t3, p1, e1, e2, e3, field):
+    # Handle "No data found" cases
+    t1 = "Not found" if t1 == "No data found" else t1
+    t2 = "Not found" if t2 == "No data found" else t2
+    t3 = "Not found" if t3 == "No data found" else t3
+    p1 = "Not found" if p1 == "No data found" else p1
+    e1 = "Not found" if e1 == "No data found" else e1
+    e2 = "Not found" if e2 == "No data found" else e2
+    e3 = "Not found" if e3 == "No data found" else e3
+
+    # Collect raw outputs
+    outputs_raw = [t1, t2, t3, p1, e1, e2, e3]
+    outputs = []
+    for val in outputs_raw:
+        if not val or val == "":
+            outputs.append("Not found")
+        else:
+            outputs.append(val)
+
+    # Field-specific cleaning
+    if field == "DateOfBirth":
+        outputs = [clean_date_field(val) for val in outputs]
+        outputs_raw = [clean_date_field(val) for val in outputs_raw]
+
+    outputs_cleaned = [clean_all_special_chars(val) for val in outputs]
+    outputs_raw = [clean_all_special_chars(val) for val in outputs_raw]
+
+    if field in ['নাম', 'পিতা', 'মাতা', 'স্বামী', 'স্ত্রী']:
+        outputs_cleaned = [clean_bangla_field(val) for val in outputs_cleaned]
+        outputs_raw = [clean_bangla_field(val) for val in outputs_raw]
+    elif field == "Name":
+        outputs_cleaned = [clean_english_field(val) for val in outputs_cleaned]
+        outputs_raw = [clean_english_field(val) for val in outputs_raw]
+
+    outputs_cleaned = [remove_special_chars(val, field) for val in outputs_cleaned]
+
+    # Final output validation
+    outputs_final = []
+    for val in outputs_cleaned:
+        if val != "Not found" and len(val.split()) == 1 and len(val) < 3:
+            outputs_final.append("Not found")
+        else:
+            outputs_final.append(val)
+
+    # Display comparison table
+    print("\n================= OCR COMPARISON =================")
+    print(f"{'':<17} t1                        | t2                        | t3                        | p1                        | e1                        | e2                        | e3")
+    print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]:<25} | {outputs_raw[3]:<25} | {outputs_raw[4]:<25} | {outputs_raw[5]:<25} | {outputs_raw[6]}")
+    print(f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]:<25} | {outputs_final[3]:<25} | {outputs_final[4]:<25} | {outputs_final[5]:<25} | {outputs_final[6]}")
+    print("==================================================\n")
+
+    # Decision logic
+    if all(val == "Not found" for val in outputs_final):
+        return "Not found"
+
+    valid_outputs = [val for val in outputs_final if val != "Not found"]
+    valid_raw = [val for val in outputs_raw if val != "Not found"]
+
+    if len(valid_outputs) == 1:
+        return valid_outputs[0]
+
+    # Check for majority matching
+    value_counts = {}
+    for val in valid_outputs:
+        value_counts[val] = value_counts.get(val, 0) + 1
+    matching_values = [val for val, count in value_counts.items() if count >= 2]
+    if matching_values:
+        return matching_values[0]
+
+    # Pair comparisons (t-p, p-e, t-e)
+    pairs = [
+        (outputs_final[0], outputs_final[3], outputs_raw[0], outputs_raw[3]),  # t1-p1
+        (outputs_final[1], outputs_final[3], outputs_raw[1], outputs_raw[3]),  # t2-p1
+        (outputs_final[2], outputs_final[3], outputs_raw[2], outputs_raw[3]),  # t3-p1
+        (outputs_final[3], outputs_final[4], outputs_raw[3], outputs_raw[4]),  # p1-e1
+        (outputs_final[3], outputs_final[5], outputs_raw[3], outputs_raw[5]),  # p1-e2
+        (outputs_final[3], outputs_final[6], outputs_raw[3], outputs_raw[6]),  # p1-e3
+        (outputs_final[0], outputs_final[4], outputs_raw[0], outputs_raw[4]),  # t1-e1
+        (outputs_final[1], outputs_final[5], outputs_raw[1], outputs_raw[5]),  # t2-e2
+        (outputs_final[2], outputs_final[6], outputs_raw[2], outputs_raw[6]),  # t3-e3
+    ]
+    matching_pairs = [(v1, v2, r1, r2) for v1, v2, r1, r2 in pairs if v1 == v2 and v1 != "Not found"]
+    if len(matching_pairs) >= 1:
+        best_value = None
+        max_words = 0
+        has_special = True
+        for v1, _, r1, r2 in matching_pairs:
+            words1 = len(v1.split())
+            special1 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r1))
+            special2 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r2))
+            if not special1 and (not special2 or words1 >= max_words):
+                best_value = v1
+                max_words = words1
+                has_special = special1
+            elif not special2 and words1 >= max_words:
+                best_value = v1
+                max_words = words1
+                has_special = special2
+            elif words1 > max_words:
+                best_value = v1
+                max_words = words1
+        if best_value:
+            return best_value
+
+    # Handle cases with few valid outputs
+    not_found_count = outputs_final.count("Not found")
+    if not_found_count in [5, 6] and len(valid_outputs) in [1, 2]:
+        if len(valid_outputs) == 1:
+            return valid_outputs[0]
+        words1 = len(valid_outputs[0].split())
+        words2 = len(valid_outputs[1].split())
+        return valid_outputs[0] if words1 >= words2 else valid_outputs[1]
+
+    # Prefer outputs with 3 or 4 words
+    unique_outputs = list(set(valid_outputs))
+    if len(unique_outputs) == len(valid_outputs):
+        for val in unique_outputs:
+            word_count = len(val.split())
+            if word_count in [3, 4]:
+                return val
+
+    # Fallback to output with most words
+    max_words = 0
+    best_val = valid_outputs[0] if valid_outputs else "Not found"
+    for val in valid_outputs:
+        words = len(val.split())
+        if words > max_words:
+            max_words = words
+            best_val = val
+    return best_val
