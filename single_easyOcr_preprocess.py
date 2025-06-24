@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+
 import os
 import pytesseract
 import easyocr
@@ -29,7 +30,7 @@ fields_code1 = {
     'স্বামী': r'স্বামী[:：]*\s*([^\n:]+)',
     'স্ত্রী': r'স্ত্রী[:：]*\s*([^\n:]+)',
     'DateOfBirth': r'Date of Birth[:：]*\s*([^\n:]+)',
-    'IDNO': r'(?:ID\s*NO|NID\s*No\.?|ID|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})'
+    'IDNO': r'(?:ID\s*NO|NID\s*No\.?|ID|NIDNo|NID\s*NO|D NO|ID N|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})'
 }
 
 # Code 2 Regex Patterns
@@ -41,7 +42,7 @@ fields_code2 = {
     'স্বামী': r'(?:স্বামী|স্বা[:;মী-]*|husband|sami)[:;\s-]*(.+?)(?=\n|$|নাম|Name|পিতা|মাতা|স্ত্রী|Date|ID)',
     'স্ত্রী': r'(?:স্ত্রী|স্ত্র[:;ী-]*|wife|stri)[:;\s-]*(.+?)(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|Date|ID)',
     'DateOfBirth': r'(?:Date of Birth|DOB|Date|Birth)[:;\s-]*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{4})(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|স্ত্রী|ID)',
-    'IDNO': r'(?:ID\s*NO|NID\s*No\.?|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})'
+     'IDNO': r'(?:ID\s*NO|NID\s*No\.?|ID|NIDNo|NID\s*NO|D NO|ID N|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})'
 }
 
 
@@ -563,7 +564,7 @@ def process_image(image_path):
     tesseract_results1 = infer_name_from_lines(tesseract_text1, tesseract_results1)
 
     results = get_easyocr_text(image_path)
-    # print(results)
+    print(results)
     easyocr_text1 = results
     easyocr_text1 = clean_header_text(easyocr_text1)
     easyocr_results1 = extract_fields_code1(easyocr_text1)
@@ -578,7 +579,7 @@ def process_image(image_path):
     tesseract_results2 = extract_fields_code2(tesseract_text2)
 
     easyocr_text2 = get_easyocr_text(preprocessed_img)
-    # print(easyocr_text2)
+    print(easyocr_text2)
     easyocr_results2 = extract_fields_code2(easyocr_text2)
 
     # Code 3 Processing with Preprocessing just rotate
@@ -592,7 +593,7 @@ def process_image(image_path):
     tesseract_results3 = infer_name_from_lines(tesseract_text3, tesseract_results3)
 
     results = get_easyocr_text(rotated_img2)
-    # print(results)
+    print(results)
     easyocr_text3 = results
     easyocr_text3 = clean_header_text(easyocr_text3)
     easyocr_results3 = extract_fields_code1(easyocr_text3)
@@ -616,7 +617,7 @@ def process_image(image_path):
 
 
 #Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_1.png"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_15.png"
 final_results = process_image(image_path)
 
 # Example Usage

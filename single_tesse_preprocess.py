@@ -557,7 +557,7 @@ def process_image(image_path):
     # Code 1 Processing
     img = Image.open(image_path)
     tesseract_text1 = pytesseract.image_to_string(img, lang='ben+eng')
-    # print(tesseract_text1)
+    print(tesseract_text1)
     tesseract_text1 = clean_header_text(tesseract_text1)
     tesseract_results1 = extract_fields_code1(tesseract_text1)
     tesseract_results1 = infer_name_from_lines(tesseract_text1, tesseract_results1)
@@ -616,7 +616,7 @@ def process_image(image_path):
 
 
 #Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/crooped images/NID_2.png"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_15.png"
 final_results = process_image(image_path)
 
 # Example Usage

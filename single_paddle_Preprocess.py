@@ -541,7 +541,7 @@ def process_image(image_path):
     # Code 1 Processing
     img = cv2.imread(image_path)
     paddle_text1 = get_paddle_ocr(img)
-    #print(paddle_text1)
+    print(paddle_text1)
     paddle_text1 = clean_header_text(paddle_text1)
     paddle_results1 = extract_fields_code2(paddle_text1)
     paddle_results1 = infer_name_from_lines(paddle_text1, paddle_results1)
@@ -562,7 +562,7 @@ def process_image(image_path):
 
 
 #Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_11.jpg"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_15.png"
 final_results = process_image(image_path)
 
 # Example Usage
