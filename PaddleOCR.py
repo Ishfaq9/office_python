@@ -1,5 +1,7 @@
 import os
 import warnings
+
+import cv2
 from paddleocr import PaddleOCR
 
 
@@ -11,15 +13,40 @@ image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_5.jpg"
 if not os.path.isfile(image_path):
     raise FileNotFoundError(f"Image file not found: {image_path}")
 
-results = ocr.ocr(image_path, cls=True)
+# results = ocr.ocr(image_path, cls=True)
+#
+# # Correct way to extract text
+# all_text = ""
+# for line in results[0]:  # First (and only) image
+#     text = line[1][0]  # line[1] = [text, confidence]
+#     all_text += text + "\n"
+#
+# print(all_text)
 
-# Correct way to extract text
-all_text = ""
-for line in results[0]:  # First (and only) image
-    text = line[1][0]  # line[1] = [text, confidence]
-    all_text += text + "\n"
 
-print(all_text)
+# Folder containing images
+folder_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/"
+
+# Supported image extensions
+image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
+
+# Loop through each file in the folder
+for filename in os.listdir(folder_path):
+    if any(filename.lower().endswith(ext) for ext in image_extensions):
+        image_path = os.path.join(folder_path, filename)
+        print(f"\nProcessing image: {filename}")
+
+        # Read and convert the image
+        img = cv2.imread(image_path)
+        results = ocr.ocr(img, cls=True)
+
+        # Correct way to extract text
+        all_text = ""
+        for line in results[0]:  # First (and only) image
+            text = line[1][0]  # line[1] = [text, confidence]
+            all_text += text + "\n"
+
+        print(all_text)
 
 #all_text = ' '.join([line[1][0] for block in results for line in block]) if results and results[0] else ""
 

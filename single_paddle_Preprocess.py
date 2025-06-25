@@ -17,9 +17,9 @@ from paddleocr import PaddleOCR
 #     print(json.dumps({"error": "Image path is required"}))
 #     sys.exit(1)
 
-det_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/det/en/en_PP-OCRv3_det_infer"
-rec_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/rec/en/en_PP-OCRv4_rec_infer"
-cls_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/cls/ch_ppocr_mobile_v2.0_cls_infer"
+# det_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/det/en/en_PP-OCRv3_det_infer"
+# rec_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/rec/en/en_PP-OCRv4_rec_infer"
+# cls_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/cls/ch_ppocr_mobile_v2.0_cls_infer"
 
 warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
 
@@ -29,9 +29,9 @@ ocr = PaddleOCR(
     lang='en', # Keep lang='en' as your det and rec models are English
     use_gpu=False,
     show_log=False,
-    det_model_dir=det_model_dir_path,
-    rec_model_dir=rec_model_dir_path,
-    cls_model_dir=cls_model_dir_path
+    # det_model_dir=det_model_dir_path,
+    # rec_model_dir=rec_model_dir_path,
+    # cls_model_dir=cls_model_dir_path
 )
 
 
@@ -44,7 +44,7 @@ fields_code1 = {
     'স্বামী': r'স্বামী[:：]*\s*([^\n:]+)',
     'স্ত্রী': r'স্ত্রী[:：]*\s*([^\n:]+)',
     'DateOfBirth': r'Date of Birth[:：]*\s*([^\n:]+)',
-    'IDNO': r'(?:ID\s*NO|NID\s*No\.?|ID|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})'
+    'IDNO': r'(?:ID\s*NO|NID\s*No\.?|ID|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s-]{8,30})'
 }
 
 # Code 2 Regex Patterns
@@ -56,7 +56,7 @@ fields_code2 = {
     'স্বামী': r'(?:স্বামী|স্বা[:;মী-]*|husband|sami)[:;\s-]*(.+?)(?=\n|$|নাম|Name|পিতা|মাতা|স্ত্রী|Date|ID)',
     'স্ত্রী': r'(?:স্ত্রী|স্ত্র[:;ী-]*|wife|stri)[:;\s-]*(.+?)(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|Date|ID)',
     'DateOfBirth': r'(?:Date of Birth|Date ofBirth|DOB|Date|Birth)[:;\s-]*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{4})(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|স্ত্রী|ID)',
-    'IDNO': r'(?:ID\s*NO|NID\s*No\.?|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})'
+    'IDNO': r'(?:ID\s*NO|NID\s*No\.?|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s-]{8,30})'
 }
 
 
@@ -263,10 +263,10 @@ def clean_ocr_text(text):
     keywords_to_remove = [
         r"গণপ্রজাতন্ত্রী বাংলাদেশ সরকার", r"গণপ্রজাতন্ত্রী সরকার", r"গণপ্রজাতন্ত্রী",
         r"বাংলাদেশ সরকার", r"Government of the People", r"National ID Card",
-        r"জাতীয় পরিচয় পত্র", r"জাতীয় পরিচয়", r"20/05/2025 09:12",r"জাতীয় পরিচয্ন পত্র"
+        r"জাতীয় পরিচয় পত্র", r"জাতীয় পরিচয়", r"20/05/2025 09:12", r"জাতীয় পরিচয্ন পত্র"
     ]
     dob_pattern = r"(Date of Birth|DOB|Date|Birth)[:：]?\s*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{4})"
-    id_no_pattern = r"(ID\s*NO|NID\s*No\.?|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]?\s*([\d ]{8,30})"
+    id_no_pattern = r"(ID\s*NO|NID\s*No\.?|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]?\s*([\d\s-]{8,30})"
     dob_matches, id_no_matches = [], []
 
     def store_dob(match):
@@ -286,7 +286,7 @@ def clean_ocr_text(text):
             continue
         for keyword in keywords_to_remove:
             line = re.sub(keyword, "", line, flags=re.IGNORECASE)
-        line = re.sub(r"[\[\]\(\)\{\}0-9]{3,}", "", line)
+        line = re.sub(r"[\[\]\(\)\{\}]", "", line)  # Only remove brackets/parentheses
         line = re.sub(r"\s+", " ", line).strip()
         if line:
             cleaned_lines.append(line)
@@ -357,10 +357,10 @@ def clean_date_of_birth(date):
 
 
 def clean_id_no(id_no):
-    if not id_no or id_no == "Not found":  # Condition 2: Explicitly check empty
+    if not id_no or id_no == "Not found":
         return "Not found"
     cleaned = re.sub(r"[^0-9]", "", id_no).strip()
-    if re.match(r"^\d{10}$|^\d{13}$|^\d{17}$", cleaned):
+    if re.match(r"^\d{9,17}$", cleaned):
         return cleaned
     return "Invalid"
 
@@ -562,7 +562,7 @@ def process_image(image_path):
 
 
 #Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_15.png"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_18.jpg"
 final_results = process_image(image_path)
 
 # Example Usage

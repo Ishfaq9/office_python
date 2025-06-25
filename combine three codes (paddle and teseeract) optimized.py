@@ -13,38 +13,7 @@ from paddleocr import PaddleOCR
 from datetime import datetime
 
 
-# 'IDNO': re.compile(
-#         r'\b(?:'
-#         # ID-based prefixes
-#         r'ID\s*NO|ID\s*No|ID\s*N0|ID[-_]?NO|IDNO|IDNo|IDno|ID\s*N|ID\s*N0|ID[-_]?N|ID[-_]?N0|'
-#         r'ID\s*#|ID|'
-#         # NID-based prefixes
-#         r'NID\s*NO|NID\s*No|NID\s*N0|NID[-_]?NO|NIDNO|NIDNo|NIDno|NID\s*N|NID\s*N0|NID[-_]?N|NID[-_]?N0|'
-#         r'NID\s*#|NID|'
-#         # 1D (typo) prefixes
-#         r'1D\s*NO|1D\s*No|1D\s*N0|1D[-_]?NO|1DNO|1DNo|1Dno|1D\s*N|1D\s*N0|1D[-_]?N|1D[-_]?N0|'
-#         r'1D\s*#|1D|'
-#         # N1D (typo) prefixes
-#         r'N1D\s*NO|N1D\s*No|N1D\s*N0|N1D[-_]?NO|N1DNO|N1DNo|N1Dno|N1D\s*N|N1D\s*N0|N1D[-_]?N|N1D[-_]?N0|'
-#         r'N1D\s*#|N1D|'
-#         # lD (typo, lowercase L) prefixes
-#         r'lD\s*NO|lD\s*No|lD\s*N0|lD[-_]?NO|lDNO|lDNo|lDno|lD\s*N|lD\s*N0|lD[-_]?N|lD[-_]?N0|'
-#         r'lD\s*#|lD|'
-#         # NlD (typo, lowercase L) prefixes
-#         r'NlD\s*NO|NlD\s*No|NlD\s*N0|NlD[-_]?NO|NlDNO|NlDNo|NlDno|NlD\s*N|NlD\s*N0|NlD[-_]?N|NlD[-_]?N0|'
-#         r'NlD\s*#|NlD|'
-#         # |D-based prefixes (typo, | for I)
-#         r'\|D\s*NO|\|D\s*No|\|D\s*N0|\|D[-_]?NO|\|DNO|\|DNo|\|Dno|\|D\s*N|\|D\s*N0|\|D[-_]?N|\|D[-_]?N0|'
-#         r'\|D\s*#|\|D|'
-#         # Compact no-space prefixes
-#         r'\|NO|\|N0|\|N|'
-#         # National ID and Nat ID prefixes
-#         r'National\s*ID|National\s*ID\s*No|National\s*ID\s*NO|Nat\s*ID|Nat\s*ID\s*No|Nat\s*ID\s*NO|NatID|NatIDNo|'
-#         # NID Number variations
-#         r'NID\s*Number|NID\s*Num|NID\s*NUM'
-#         r')\b[:\.]?\s*([\d\s]{8,30})',
-#         re.IGNORECASE | re.MULTILINE
-#     )
+
 
 # sys.stdout.reconfigure(encoding='utf-8')
 # # # Get image path from argument
@@ -71,7 +40,7 @@ fields_code1 = {
     'স্ত্রী': re.compile(r'স্ত্রী[:：]*\s*([^\n:]+)', re.IGNORECASE | re.MULTILINE),
     'DateOfBirth': re.compile(r'Date of Birth[:：]*\s*([^\n:]+)', re.IGNORECASE | re.MULTILINE),
     #'IDNO': re.compile(r'(?:ID\s*NO|NID\s*No\.?|ID|NIDNo|NID\s*NO|\|D NO|ID N|NID\s*No|ID\s*N0)\s*[:：]*\s*([\d\s]{8,30})', re.IGNORECASE | re.MULTILINE)
-'IDNO': re.compile(r'\b(?:(?:[IN1l|]{1,2}D|NID)(?:\s*NO|\s*No|\s*N0|[-_]?NO|NO|No|no|\s*N|\s*N0|[-_]?N|[-_]?N0|\s*#)?|NID\s*(?:Number|Num|NUM)|\|N0|\|NO|\|N)\b[:\.]?\s*([\d\s]{8,30})', re.IGNORECASE | re.MULTILINE)
+'IDNO': re.compile(r'\b(?:(?:[IN1l|]{1,2}D|NID)(?:\s*NO|\s*No|\s*N0|[-_]?NO|NO|No|no|\s*N|\s*N0|[-_]?N|[-_]?N0|\s*#)?|NID\s*(?:Number|Num|NUM)|\|N0|\|NO|\|N)\b[:\.]?\s*([\d\s-]{8,30})', re.IGNORECASE | re.MULTILINE)
 
 
 }
@@ -85,7 +54,7 @@ fields_code2 = {
     'স্ত্রী': re.compile(r'(?:স্ত্রী|স্ত্র[:;ী-]*|wife|stri)[:;\s-]*(.+?)(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|Date|ID)', re.IGNORECASE | re.MULTILINE),
     'DateOfBirth': re.compile(r'(?:Date of Birth|Date ofBirth|DOB|Date|Birth)[:;\s-]*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{4})(?=\n|$|নাম|Name|পিতা|মাতা|স্বামী|স্ত্রী|ID)', re.IGNORECASE | re.MULTILINE),
     # 'IDNO': re.compile(r'\b(?:N?1?I?D[\s#:_-]*N?O?|National\s*ID(?:\s*No)?)\b[:\.]?\s*([\d\s]{8,30})',re.IGNORECASE | re.MULTILINE)
-'IDNO': re.compile(r'\b(?:(?:[IN1l|]{1,2}D|NID)(?:\s*NO|\s*No|\s*N0|[-_]?NO|NO|No|no|\s*N|\s*N0|[-_]?N|[-_]?N0|\s*#)?|NID\s*(?:Number|Num|NUM)|\|N0|\|NO|\|N)\b[:\.]?\s*([\d\s]{8,30})', re.IGNORECASE | re.MULTILINE)
+'IDNO': re.compile(r'\b(?:(?:[IN1l|]{1,2}D|NID)(?:\s*NO|\s*No|\s*N0|[-_]?NO|NO|No|no|\s*N|\s*N0|[-_]?N|[-_]?N0|\s*#)?|NID\s*(?:Number|Num|NUM)|\|N0|\|NO|\|N)\b[:\.]?\s*([\d\s-]{8,30})', re.IGNORECASE | re.MULTILINE)
 
 }
 
@@ -276,7 +245,7 @@ def clean_ocr_text(text):
         r"জাতীয় পরিচয় পত্র", r"জাতীয় পরিচয়", r"20/05/2025 09:12", r"জাতীয় পরিচয্ন পত্র"
     ]
     dob_pattern = re.compile(r"(Date of Birth|DOB|Date|Birth)[:：]?\s*(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{4})", re.IGNORECASE)
-    id_no_pattern = re.compile(r"(ID\s*NO|NID\s*No\.?|NIDNo|NID\s*NO|NID\s*No|ID\s*N0)\s*[:：]?\s*([\d ]{8,30})", re.IGNORECASE)
+    id_no_pattern = re.compile(r'\b(?:(?:[IN1l|]{1,2}D|NID)(?:\s*NO|\s*No|\s*N0|[-_]?NO|NO|No|no|\s*N|\s*N0|[-_]?N|[-_]?N0|\s*#)?|NID\s*(?:Num|NUM)|\|N0|\|NO|\|N)\b[:\.]?\s*([\d\s-]{8,30})', re.IGNORECASE | re.MULTILINE)
     dob_matches, id_no_matches = [], []
 
     def store_dob(match):
@@ -296,7 +265,7 @@ def clean_ocr_text(text):
             continue
         for keyword in keywords_to_remove:
             line = re.sub(keyword, "", line, flags=re.IGNORECASE)
-        line = re.sub(r"[\[\]\(\)\{\}0-9]{3,}", "", line)
+        line = re.sub(r"[\[\]\(\)\{\}]", "", line)
         line = re.sub(r"\s+", " ", line).strip()
         if line:
             cleaned_lines.append(line)
@@ -650,11 +619,8 @@ def process_image(image_path):
     paddle_text1 = get_paddle_ocr(img_cv2)
     print("PaddleOCR Code 1:", paddle_text1)
     paddle_text1 = clean_header_text(paddle_text1)
-    print(paddle_text1)
     paddle_results1 = extract_fields_code2(paddle_text1)
-    print(paddle_text1)
     paddle_results1 = infer_name_from_lines(paddle_text1, paddle_results1)
-    print(paddle_text1)
 
     # Code 2 Processing with Preprocessing
     rotated_img = dskew(img_cv2)
@@ -687,7 +653,7 @@ def process_image(image_path):
     return final_results
 
 # Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/Nid Images WithCrop/image.jpg"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_15.png"
 final_results = process_image(image_path)
 
 # Example Usage
