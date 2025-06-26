@@ -19,7 +19,7 @@ from math import atan, degrees, radians, sin, cos, fabs
 # Tesseract path
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 #reader = easyocr.Reader(['en', 'bn'], gpu=False)
-reader = easyocr.Reader(['en', 'bn'],gpu=False, model_storage_directory =r'C:\easy\model',user_network_directory =r'C:\easy\network')
+reader = easyocr.Reader(['en'],gpu=False, model_storage_directory =r'C:\easy\model',user_network_directory =r'C:\easy\network')
 
 # Code 1 Regex Patterns
 fields_code1 = {
@@ -503,10 +503,10 @@ def compare_outputs(e1, e2, e3, field):
             outputs_final.append(val)
 
     # print("\n================= OCR COMPARISON =================")
-    # print(f"{'':<17} e1                        | e2                        | e3")
-    # print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]}")
-    # print(f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]}")
-    # print("==================================================\n")
+    print(f"{'':<17} e1                        | e2                        | e3")
+    print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]}")
+    print(f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]}")
+    print("==================================================\n")
 
     if all(val == "Not found" for val in outputs_final):
         return "Not found"

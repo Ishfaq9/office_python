@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 import os
+from pathlib import Path
+import tempfile
 import pytesseract
 import easyocr
 import re
@@ -11,7 +13,21 @@ from math import atan, degrees, radians, sin, cos, fabs
 import warnings
 from paddleocr import PaddleOCR
 from datetime import datetime
+import os
+import cv2
+from doctr.io import DocumentFile
+from doctr.models import ocr_predictor
 
+CUSTOM_CACHE_DIR = "C:/TempfileForDoctr"
+
+# Create custom cache directory if it doesn't exist
+os.makedirs(CUSTOM_CACHE_DIR, exist_ok=True)
+
+# Set environment variables for Matplotlib and DocTR
+os.environ["MPLCONFIGDIR"] = CUSTOM_CACHE_DIR
+os.environ["DOCTR_CACHE_DIR"] = CUSTOM_CACHE_DIR
+
+predictor = ocr_predictor(pretrained=True, det_arch='db_resnet50', reco_arch='crnn_vgg16_bn')
 
 
 
@@ -20,15 +36,17 @@ from datetime import datetime
 # if len(sys.argv) < 2:
 #     print(json.dumps({"error": "Image path is required"}))
 #     sys.exit(1)
-
+#
+# # Define custom temporary directory
+# CUSTOM_TEMP_DIR = "C:/TempfileForDoctr"
 # Tesseract path
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+#pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # Suppress PaddleOCR warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
-
-# Initialize PaddleOCR globally
-ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
+# warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
+# reader = easyocr.Reader(['en'],gpu=False, model_storage_directory =r'C:\easy\model',user_network_directory =r'C:\easy\network')
+# # Initialize PaddleOCR globally
+# ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
 
 # Compile regex patterns for efficiency
 fields_code1 = {
@@ -212,21 +230,52 @@ def preprocess_before_crop(img):
     # adaptive_thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
     return gray, img
 
-def get_tesseract_ocr(image):
-    img = Image.fromarray(image)
-    ocr_text = pytesseract.image_to_string(img, lang='eng')
-    return ocr_text
-
-def get_paddle_ocr(image):
-    results = ocr.ocr(image, cls=True)
-    all_text = ""
-    for line in results[0]:
-        text = line[1][0]
-        all_text += text + "\n"
-    return all_text
-
-def get_easyocr_text(image_path):
+def get_tesseract_ocr(image):#
     return ''
+
+# def get_paddle_ocr(image):
+#     results = ocr.ocr(image, cls=True)
+#     all_text = ""
+#     for line in results[0]:
+#         text = line[1][0]
+#         all_text += text + "\n"
+#     return all_text
+
+
+def get_easyocr_text(image_input):
+    # Ensure custom directory exists
+    os.makedirs(CUSTOM_CACHE_DIR, exist_ok=True)
+
+    if isinstance(image_input, str):
+        if not os.path.exists(image_input):
+            raise FileNotFoundError(f"Image file not found: {image_input}")
+        doc = DocumentFile.from_images(image_input)
+    elif isinstance(image_input, np.ndarray):
+        if image_input.size == 0:
+            raise ValueError("image_input is an empty array")
+        temp_file_name = f"temp_image_{os.urandom(8).hex()}.png"
+        temp_file_path = os.path.join(CUSTOM_CACHE_DIR, temp_file_name)
+        try:
+            cv2.imwrite(temp_file_path, image_input)
+            doc = DocumentFile.from_images(temp_file_path)
+        finally:
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+    else:
+        raise TypeError("Unsupported image input type. Must be a file path (str) or a NumPy array.")
+
+    result = predictor(doc)
+    raw_text = []
+    for page in result.pages:
+        for block in page.blocks:
+            if block.artefacts:
+                for artefact in block.artefacts:
+                    raw_text.append(f"Table cell: {artefact.value}\n")
+            for line in block.lines:
+                raw_text.append(" ".join([word.value for word in line.words]) + "\n")
+    return "".join(raw_text).strip()
+
+
 
 def contains_english(text):
     if not text or text == "Not found":
@@ -480,13 +529,12 @@ def clean_english_field(text):
 
 
 
-def compare_outputs(t1, t2, t3, p1, field):
+def compare_outputs(t1, t2, t3, field): # Removed p1/comapsimn from parameters
     t1 = "Not found" if t1 == "No data found" else t1
     t2 = "Not found" if t2 == "No data found" else t2
     t3 = "Not found" if t3 == "No data found" else t3
-    p1 = "Not found" if p1 == "No data found" else p1
 
-    outputs_raw = [t1, t2, t3, p1]
+    outputs_raw = [t1, t2, t3] # Only t1, t2, t3
     outputs = []
     for val in outputs_raw:
         if not val or val == "":
@@ -527,12 +575,13 @@ def compare_outputs(t1, t2, t3, p1, field):
         else:
             outputs_final.append(val)
 
-    print("\n================= OCR COMPARISON =================")
-    print(f"{'':<17} t1                        | t2                        | t3                        | p1")
-    print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]:<25} | {outputs_raw[3]}")
-    print(
-        f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]:<25} | {outputs_final[3]}")
-    print("==================================================\n")
+    # print("\n================= OCR COMPARISON =================")
+    # # Adjusted print statement for 3 inputs
+    # print(f"{'':<17} t1                        | t2                        | t3")
+    # print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]}")
+    # print(
+    #     f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]}")
+    # print("==================================================\n")
 
     if all(val == "Not found" for val in outputs_final):
         return "Not found"
@@ -543,48 +592,59 @@ def compare_outputs(t1, t2, t3, p1, field):
     if len(valid_outputs) == 1:
         return valid_outputs[0]
 
+    pairs = [
+        (outputs_final[0], outputs_final[1], outputs_raw[0], outputs_raw[1]), # t1 vs t2
+        (outputs_final[0], outputs_final[2], outputs_raw[0], outputs_raw[2]), # t1 vs t3
+        (outputs_final[1], outputs_final[2], outputs_raw[1], outputs_raw[2])  # t2 vs t3
+    ]
+    matching_pairs = [(v1, v2, r1, r2) for v1, v2, r1, r2 in pairs if v1 == v2 and v1 != "Not found"]
+
+    if len(matching_pairs) >= 1:
+        best_value = None
+        max_words = -1 # Initialize with -1 for words count to ensure any valid word count is higher
+        has_special = True # Assume special chars initially to prioritize no special chars
+
+        for v1, _, r1, r2 in matching_pairs: # v2 and r2 are used for checking special chars in the paired raw output
+            words1 = len(v1.split())
+            special1_in_raw1 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r1))
+            special2_in_raw2 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r2))
+
+            # Determine if the current matching pair is "better"
+            if best_value is None: # If it's the first matching pair found
+                best_value = v1
+                max_words = words1
+                has_special = special1_in_raw1 or special2_in_raw2
+            else:
+                # Prioritize values without special characters
+                current_has_special = special1_in_raw1 or special2_in_raw2
+                if not current_has_special and has_special: # Current has no special, previous had special
+                    best_value = v1
+                    max_words = words1
+                    has_special = False
+                elif current_has_special == has_special: # Both have or don't have special chars
+                    if words1 > max_words: # Pick the one with more words
+                        best_value = v1
+                        max_words = words1
+                        has_special = current_has_special # Update special char status
+        if best_value:
+            return best_value
+
     value_counts = {}
     for val in valid_outputs:
         value_counts[val] = value_counts.get(val, 0) + 1
     matching_values = [val for val, count in value_counts.items() if count >= 2]
     if matching_values:
+        # For 3 inputs, if count >= 2, there will be only one such value.
         return matching_values[0]
 
-    pairs = [
-        (outputs_final[0], outputs_final[3], outputs_raw[0], outputs_raw[3]),
-        (outputs_final[1], outputs_final[3], outputs_raw[1], outputs_raw[3]),
-        (outputs_final[2], outputs_final[3], outputs_raw[2], outputs_raw[3])
-    ]
-    matching_pairs = [(v1, v2, r1, r2) for v1, v2, r1, r2 in pairs if v1 == v2 and v1 != "Not found"]
-    if len(matching_pairs) >= 1:
-        best_value = None
-        max_words = 0
-        has_special = True
-        for v1, _, r1, r2 in matching_pairs:
-            words1 = len(v1.split())
-            special1 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r1))
-            special2 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r2))
-            if not special1 and (not special2 or words1 >= max_words):
-                best_value = v1
-                max_words = words1
-                has_special = special1
-            elif not special2 and words1 >= max_words:
-                best_value = v1
-                max_words = words1
-                has_special = special2
-            elif words1 > max_words:
-                best_value = v1
-                max_words = words1
-        if best_value:
-            return best_value
-
     not_found_count = outputs_final.count("Not found")
-    if not_found_count in [2, 3] and len(valid_outputs) in [1, 2]:
+    if not_found_count in [1, 2] and len(valid_outputs) in [1, 2]: # Adjusted for 3 inputs
         if len(valid_outputs) == 1:
             return valid_outputs[0]
-        words1 = len(valid_outputs[0].split())
-        words2 = len(valid_outputs[1].split())
-        return valid_outputs[0] if words1 >= words2 else valid_outputs[1]
+        if len(valid_outputs) == 2:
+            words1 = len(valid_outputs[0].split())
+            words2 = len(valid_outputs[1].split())
+            return valid_outputs[0] if words1 >= words2 else valid_outputs[1]
 
     unique_outputs = list(set(valid_outputs))
     if len(unique_outputs) == len(valid_outputs):
@@ -603,49 +663,50 @@ def compare_outputs(t1, t2, t3, p1, field):
     return best_val
 
 def process_image(image_path):
-    # Read and preprocess image once
+    # code 1
+
     img_cv2 = cv2.imread(image_path)
     if img_cv2 is None:
         raise ValueError(f"Failed to load image at {image_path}")
 
-    # Code 1 Processing
-    img_pil = Image.fromarray(cv2.cvtColor(img_cv2, cv2.COLOR_BGR2RGB))
-    tesseract_text1 = pytesseract.image_to_string(img_pil, lang='eng')
-    print("Tesseract Code 1:", tesseract_text1)
-    tesseract_text1 = clean_header_text(tesseract_text1)
-    tesseract_results1 = extract_fields_code1(tesseract_text1)
-    tesseract_results1 = infer_name_from_lines(tesseract_text1, tesseract_results1)
+    easyocr_text1 = get_easyocr_text(image_path)
+    #print(easyocr_text1)
+    easyocr_text1 = clean_header_text(easyocr_text1)
+    easyocr_results1 = extract_fields_code1(easyocr_text1)
+    easyocr_results1 = infer_name_from_lines(easyocr_text1, easyocr_results1)
 
-    paddle_text1 = get_paddle_ocr(img_cv2)
-    print("PaddleOCR Code 1:", paddle_text1)
-    paddle_text1 = clean_header_text(paddle_text1)
-    paddle_results1 = extract_fields_code2(paddle_text1)
-    paddle_results1 = infer_name_from_lines(paddle_text1, paddle_results1)
+    # paddle_text1 = get_paddle_ocr(img_cv2)
+    # print("PaddleOCR Code 1:", paddle_text1)
+    # paddle_text1_cleaned = clean_header_text(paddle_text1)
+    # paddle_results1 = extract_fields_code2(paddle_text1_cleaned)
+    # paddle_results1 = infer_name_from_lines(paddle_text1_cleaned, paddle_results1)
+
+    # Preprocess (Deskew) for subsequent runs
+    rotated_img = dskew(img_cv2)
 
     # Code 2 Processing with Preprocessing
-    rotated_img = dskew(img_cv2)
     preprocessed_img, _ = preprocess_before_crop(rotated_img)
-    tesseract_text2 = get_tesseract_ocr(preprocessed_img)
-    print("Tesseract Code 2:", tesseract_text2)
-    tesseract_results2 = extract_fields_code2(tesseract_text2)
+    easyocr_text2 = get_easyocr_text(preprocessed_img)
+    #print("EasyOCR Deskewed Text:", easyocr_text2)
+    easyocr_results2 = extract_fields_code2(easyocr_text2)
+
 
     # Code 3 Processing with Preprocessing (just rotate)
-    rotated_img2 = rotated_img  # Reuse rotated image from Code 2
-    rotated_img3 = Image.fromarray(rotated_img2)
-    tesseract_text3 = pytesseract.image_to_string(rotated_img3, lang='eng')
-    print("Tesseract Code 3:", tesseract_text3)
-    tesseract_text3 = clean_header_text(tesseract_text3)
-    tesseract_results3 = extract_fields_code1(tesseract_text3)
-    tesseract_results3 = infer_name_from_lines(tesseract_text3, tesseract_results3)
+    easyocr_text3 = get_easyocr_text(rotated_img)
+    #print(easyocr_text3)
+    easyocr_text3 = clean_header_text(easyocr_text3)
+    easyocr_results3 = extract_fields_code1(easyocr_text3)
+    easyocr_results3 = infer_name_from_lines(easyocr_text3, easyocr_results3)
+
 
     # Combine results
     final_results = {}
     for field in fields_code1:
-        t1 = tesseract_results1.get(field, "Not found")
-        p1 = paddle_results1.get(field, "Not found")
-        t2 = tesseract_results2.get(field, "Not found")
-        t3 = tesseract_results3.get(field, "Not found")
-        final_results[field] = compare_outputs(t1, t2, t3, p1, field)
+        e1 = easyocr_results1.get(field, "Not found")
+        # p1 = paddle_results1.get(field, "Not found")
+        e2 = easyocr_results2.get(field, "Not found")
+        e3 = easyocr_results3.get(field, "Not found")
+        final_results[field] = compare_outputs(e1,e2,e3,field)
 
     for field, value in final_results.items():
         print(f"{field}: {value}")
@@ -653,7 +714,7 @@ def process_image(image_path):
     return final_results
 
 # Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_15.png"
+image_path = "C:/Users/Administrator/Desktop/NID Images/New Images/NID_3.png"
 final_results = process_image(image_path)
 
 # Example Usage

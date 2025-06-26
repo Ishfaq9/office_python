@@ -22,11 +22,11 @@ from datetime import datetime
 #     sys.exit(1)
 
 # Tesseract path
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+#pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # Suppress PaddleOCR warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
-
+reader = easyocr.Reader(['en'],gpu=False, model_storage_directory =r'C:\easy\model',user_network_directory =r'C:\easy\network')
 # Initialize PaddleOCR globally
 ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
 
@@ -226,7 +226,9 @@ def get_paddle_ocr(image):
     return all_text
 
 def get_easyocr_text(image_path):
-    return ''
+    results = reader.readtext(image_path)
+    ocr_text = "\n".join([text for _, text, _ in results])
+    return ocr_text
 
 def contains_english(text):
     if not text or text == "Not found":
@@ -603,49 +605,48 @@ def compare_outputs(t1, t2, t3, p1, field):
     return best_val
 
 def process_image(image_path):
-    # Read and preprocess image once
+    # code 1
+
     img_cv2 = cv2.imread(image_path)
     if img_cv2 is None:
         raise ValueError(f"Failed to load image at {image_path}")
 
-    # Code 1 Processing
-    img_pil = Image.fromarray(cv2.cvtColor(img_cv2, cv2.COLOR_BGR2RGB))
-    tesseract_text1 = pytesseract.image_to_string(img_pil, lang='eng')
-    print("Tesseract Code 1:", tesseract_text1)
-    tesseract_text1 = clean_header_text(tesseract_text1)
-    tesseract_results1 = extract_fields_code1(tesseract_text1)
-    tesseract_results1 = infer_name_from_lines(tesseract_text1, tesseract_results1)
+    easyocr_text1 = get_easyocr_text(image_path)
+    easyocr_text1 = clean_header_text(easyocr_text1)
+    easyocr_results1 = extract_fields_code1(easyocr_text1)
+    easyocr_results1 = infer_name_from_lines(easyocr_text1, easyocr_results1)
 
     paddle_text1 = get_paddle_ocr(img_cv2)
     print("PaddleOCR Code 1:", paddle_text1)
-    paddle_text1 = clean_header_text(paddle_text1)
-    paddle_results1 = extract_fields_code2(paddle_text1)
-    paddle_results1 = infer_name_from_lines(paddle_text1, paddle_results1)
+    paddle_text1_cleaned = clean_header_text(paddle_text1)
+    paddle_results1 = extract_fields_code2(paddle_text1_cleaned)
+    paddle_results1 = infer_name_from_lines(paddle_text1_cleaned, paddle_results1)
+
+    # Preprocess (Deskew) for subsequent runs
+    rotated_img = dskew(img_cv2)
 
     # Code 2 Processing with Preprocessing
-    rotated_img = dskew(img_cv2)
     preprocessed_img, _ = preprocess_before_crop(rotated_img)
-    tesseract_text2 = get_tesseract_ocr(preprocessed_img)
-    print("Tesseract Code 2:", tesseract_text2)
-    tesseract_results2 = extract_fields_code2(tesseract_text2)
+    easyocr_text2 = get_easyocr_text(preprocessed_img)
+    print("EasyOCR Deskewed Text:", easyocr_text2)
+    easyocr_results2 = extract_fields_code2(easyocr_text2)
+
 
     # Code 3 Processing with Preprocessing (just rotate)
-    rotated_img2 = rotated_img  # Reuse rotated image from Code 2
-    rotated_img3 = Image.fromarray(rotated_img2)
-    tesseract_text3 = pytesseract.image_to_string(rotated_img3, lang='eng')
-    print("Tesseract Code 3:", tesseract_text3)
-    tesseract_text3 = clean_header_text(tesseract_text3)
-    tesseract_results3 = extract_fields_code1(tesseract_text3)
-    tesseract_results3 = infer_name_from_lines(tesseract_text3, tesseract_results3)
+    easyocr_text3 = get_easyocr_text(rotated_img)
+    easyocr_text3 = clean_header_text(easyocr_text3)
+    easyocr_results3 = extract_fields_code1(easyocr_text3)
+    easyocr_results3 = infer_name_from_lines(easyocr_text3, easyocr_results3)
+
 
     # Combine results
     final_results = {}
     for field in fields_code1:
-        t1 = tesseract_results1.get(field, "Not found")
+        e1 = easyocr_results1.get(field, "Not found")
         p1 = paddle_results1.get(field, "Not found")
-        t2 = tesseract_results2.get(field, "Not found")
-        t3 = tesseract_results3.get(field, "Not found")
-        final_results[field] = compare_outputs(t1, t2, t3, p1, field)
+        e2 = easyocr_results2.get(field, "Not found")
+        e3 = easyocr_results3.get(field, "Not found")
+        final_results[field] = compare_outputs(e1,e2,e3,p1,field)
 
     for field, value in final_results.items():
         print(f"{field}: {value}")
