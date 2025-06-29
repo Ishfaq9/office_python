@@ -1,25 +1,24 @@
+from paddleocr import PaddleOCR
+import base64
+import os
+import tempfile
 import cv2
 import numpy as np
-import os
-from pathlib import Path
-import tempfile
-import pytesseract
-import easyocr
 import re
-import json
-import sys
-from PIL import Image
 from math import atan, degrees, radians, sin, cos, fabs
 import warnings
-from paddleocr import PaddleOCR
 from datetime import datetime
-import os
-import cv2
 from doctr.io import DocumentFile
 from doctr.models import ocr_predictor
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 
 CUSTOM_CACHE_DIR = "C:/TempfileForDoctr"
+
+det_model_dir_path = "C:/my_paddleocr_models/.paddleocr/whl/det/en/en_PP-OCRv3_det_infer"
+rec_model_dir_path = "C:/my_paddleocr_models/.paddleocr/whl/rec/en/en_PP-OCRv4_rec_infer"
+cls_model_dir_path = "C:/my_paddleocr_models/.paddleocr/whl/cls/ch_ppocr_mobile_v2.0_cls_infer"
 
 # Create custom cache directory if it doesn't exist
 os.makedirs(CUSTOM_CACHE_DIR, exist_ok=True)
@@ -28,7 +27,24 @@ os.makedirs(CUSTOM_CACHE_DIR, exist_ok=True)
 os.environ["MPLCONFIGDIR"] = CUSTOM_CACHE_DIR
 os.environ["DOCTR_CACHE_DIR"] = CUSTOM_CACHE_DIR
 
+
+# Initialize PaddleOCR with these precise model directory paths
+ocr = PaddleOCR(
+    use_angle_cls=True,
+    lang='en', # Keep lang='en' as your det and rec models are English
+    use_gpu=False,
+    show_log=False,
+    det_model_dir=det_model_dir_path,
+    rec_model_dir=rec_model_dir_path,
+    cls_model_dir=cls_model_dir_path
+)
 predictor = ocr_predictor(pretrained=True, det_arch='db_resnet50', reco_arch='crnn_vgg16_bn')
+
+
+
+
+warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
+
 
 
 
@@ -238,10 +254,15 @@ def preprocess_before_crop(img):
 def get_tesseract_ocr(image):#
     return ''
 
-
-
+def get_paddle_ocr(image):
+    results = ocr.ocr(image, cls=True)
+    all_text = ""
+    for line in results[0]:
+        text = line[1][0]
+        all_text += text + "\n"
     #all_text=' '.join([line[1][0] for block in results for line in block]) if results and results[0] else ""
     return all_text
+
 # def get_paddle_ocr(image):
 #     results = ocr.ocr(image, cls=True)
 #     all_text = ""
@@ -538,12 +559,13 @@ def clean_english_field(text):
 
 
 
-def compare_outputs(t1, t2, t3, field): # Removed p1/comapsimn from parameters
+def compare_outputs(t1, t2, t3, p1, field):
     t1 = "Not found" if t1 == "No data found" else t1
     t2 = "Not found" if t2 == "No data found" else t2
     t3 = "Not found" if t3 == "No data found" else t3
+    p1 = "Not found" if p1 == "No data found" else p1
 
-    outputs_raw = [t1, t2, t3] # Only t1, t2, t3
+    outputs_raw = [t1, t2, t3, p1]
     outputs = []
     for val in outputs_raw:
         if not val or val == "":
@@ -585,11 +607,10 @@ def compare_outputs(t1, t2, t3, field): # Removed p1/comapsimn from parameters
             outputs_final.append(val)
 
     # print("\n================= OCR COMPARISON =================")
-    # # Adjusted print statement for 3 inputs
-    # print(f"{'':<17} t1                        | t2                        | t3")
-    # print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]}")
+    # print(f"{'':<17} t1                        | t2                        | t3                        | p1")
+    # print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]:<25} | {outputs_raw[3]}")
     # print(
-    #     f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]}")
+    #     f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]:<25} | {outputs_final[3]}")
     # print("==================================================\n")
 
     if all(val == "Not found" for val in outputs_final):
@@ -601,59 +622,48 @@ def compare_outputs(t1, t2, t3, field): # Removed p1/comapsimn from parameters
     if len(valid_outputs) == 1:
         return valid_outputs[0]
 
-    pairs = [
-        (outputs_final[0], outputs_final[1], outputs_raw[0], outputs_raw[1]), # t1 vs t2
-        (outputs_final[0], outputs_final[2], outputs_raw[0], outputs_raw[2]), # t1 vs t3
-        (outputs_final[1], outputs_final[2], outputs_raw[1], outputs_raw[2])  # t2 vs t3
-    ]
-    matching_pairs = [(v1, v2, r1, r2) for v1, v2, r1, r2 in pairs if v1 == v2 and v1 != "Not found"]
-
-    if len(matching_pairs) >= 1:
-        best_value = None
-        max_words = -1 # Initialize with -1 for words count to ensure any valid word count is higher
-        has_special = True # Assume special chars initially to prioritize no special chars
-
-        for v1, _, r1, r2 in matching_pairs: # v2 and r2 are used for checking special chars in the paired raw output
-            words1 = len(v1.split())
-            special1_in_raw1 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r1))
-            special2_in_raw2 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r2))
-
-            # Determine if the current matching pair is "better"
-            if best_value is None: # If it's the first matching pair found
-                best_value = v1
-                max_words = words1
-                has_special = special1_in_raw1 or special2_in_raw2
-            else:
-                # Prioritize values without special characters
-                current_has_special = special1_in_raw1 or special2_in_raw2
-                if not current_has_special and has_special: # Current has no special, previous had special
-                    best_value = v1
-                    max_words = words1
-                    has_special = False
-                elif current_has_special == has_special: # Both have or don't have special chars
-                    if words1 > max_words: # Pick the one with more words
-                        best_value = v1
-                        max_words = words1
-                        has_special = current_has_special # Update special char status
-        if best_value:
-            return best_value
-
     value_counts = {}
     for val in valid_outputs:
         value_counts[val] = value_counts.get(val, 0) + 1
     matching_values = [val for val, count in value_counts.items() if count >= 2]
     if matching_values:
-        # For 3 inputs, if count >= 2, there will be only one such value.
         return matching_values[0]
 
+    pairs = [
+        (outputs_final[0], outputs_final[3], outputs_raw[0], outputs_raw[3]),
+        (outputs_final[1], outputs_final[3], outputs_raw[1], outputs_raw[3]),
+        (outputs_final[2], outputs_final[3], outputs_raw[2], outputs_raw[3])
+    ]
+    matching_pairs = [(v1, v2, r1, r2) for v1, v2, r1, r2 in pairs if v1 == v2 and v1 != "Not found"]
+    if len(matching_pairs) >= 1:
+        best_value = None
+        max_words = 0
+        has_special = True
+        for v1, _, r1, r2 in matching_pairs:
+            words1 = len(v1.split())
+            special1 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r1))
+            special2 = bool(re.search(r"[^A-Za-z\s\.\u0980-\u09FF0-9]", r2))
+            if not special1 and (not special2 or words1 >= max_words):
+                best_value = v1
+                max_words = words1
+                has_special = special1
+            elif not special2 and words1 >= max_words:
+                best_value = v1
+                max_words = words1
+                has_special = special2
+            elif words1 > max_words:
+                best_value = v1
+                max_words = words1
+        if best_value:
+            return best_value
+
     not_found_count = outputs_final.count("Not found")
-    if not_found_count in [1, 2] and len(valid_outputs) in [1, 2]: # Adjusted for 3 inputs
+    if not_found_count in [2, 3] and len(valid_outputs) in [1, 2]:
         if len(valid_outputs) == 1:
             return valid_outputs[0]
-        if len(valid_outputs) == 2:
-            words1 = len(valid_outputs[0].split())
-            words2 = len(valid_outputs[1].split())
-            return valid_outputs[0] if words1 >= words2 else valid_outputs[1]
+        words1 = len(valid_outputs[0].split())
+        words2 = len(valid_outputs[1].split())
+        return valid_outputs[0] if words1 >= words2 else valid_outputs[1]
 
     unique_outputs = list(set(valid_outputs))
     if len(unique_outputs) == len(valid_outputs):
@@ -671,6 +681,10 @@ def compare_outputs(t1, t2, t3, field): # Removed p1/comapsimn from parameters
             best_val = val
     return best_val
 
+app = FastAPI()
+class ImageData(BaseModel):
+    image_base64: str
+
 def process_image(image_path):
     # code 1
 
@@ -679,10 +693,13 @@ def process_image(image_path):
         raise ValueError(f"Failed to load image at {image_path}")
 
     easyocr_text1 = get_easyocr_text(image_path)
-    print(easyocr_text1)
+    # print(easyocr_text1)
     easyocr_text1 = clean_header_text(easyocr_text1)
     easyocr_results1 = extract_fields_code1(easyocr_text1)
     easyocr_results1 = infer_name_from_lines(easyocr_text1, easyocr_results1)
+
+    #img = cv2.imread(image_path)
+
 
     # paddle_text1 = get_paddle_ocr(img_cv2)
     # print("PaddleOCR Code 1:", paddle_text1)
@@ -696,31 +713,59 @@ def process_image(image_path):
     # Code 2 Processing with Preprocessing
     preprocessed_img, _ = preprocess_before_crop(rotated_img)
     easyocr_text2 = get_easyocr_text(preprocessed_img)
-    print("EasyOCR Deskewed Text:", easyocr_text2)
+    #print("EasyOCR Deskewed Text:", easyocr_text2)
     easyocr_results2 = extract_fields_code2(easyocr_text2)
 
 
     # Code 3 Processing with Preprocessing (just rotate)
     easyocr_text3 = get_easyocr_text(rotated_img)
-    print(easyocr_text3)
+    # print(easyocr_text3)
     easyocr_text3 = clean_header_text(easyocr_text3)
     easyocr_results3 = extract_fields_code1(easyocr_text3)
     easyocr_results3 = infer_name_from_lines(easyocr_text3, easyocr_results3)
+
+    paddle_text1 = get_paddle_ocr(img_cv2)
+    # print(paddle_text1)
+    paddle_text1 = clean_header_text(paddle_text1)
+    paddle_results1 = extract_fields_code2(paddle_text1)
+    paddle_results1 = infer_name_from_lines(paddle_text1, paddle_results1)
 
 
     # Combine results
     final_results = {}
     for field in fields_code1:
         e1 = easyocr_results1.get(field, "Not found")
-        # p1 = paddle_results1.get(field, "Not found")
+        p1 = paddle_results1.get(field, "Not found")
         e2 = easyocr_results2.get(field, "Not found")
         e3 = easyocr_results3.get(field, "Not found")
-        final_results[field] = compare_outputs(e1,e2,e3,field)
+        final_results[field] = compare_outputs(e1,e2,e3,p1,field)
 
     for field, value in final_results.items():
         print(f"{field}: {value}")
 
     return final_results
+
+
+# @app.post("/extract-fields/")
+# async def extract_fields(data: ImageData):
+#     try:
+#         # Decode base64 to image
+#         image_bytes = base64.b64decode(data.image_base64)
+#
+#         # Save to temporary file
+#         with tempfile.NamedTemporaryFile(dir="C:/TempfileForDoctr", suffix=".png", delete=False) as temp_file:
+#             temp_file.write(image_bytes)
+#             temp_file_path = temp_file.name
+#
+#         # Process the image with the custom processing function
+#         result = process_image(temp_file_path)
+#
+#         # Delete the temporary file
+#         os.unlink(temp_file_path)
+#
+#         return result
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 # Example Usage
 image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_15.png"
