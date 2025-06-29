@@ -942,13 +942,13 @@ if __name__ == "__main__":
     # --- Test Cases ---
 
     # Test Case 1: Standard well-formatted OCR text
-    ocr_text_1 = """
-            Government of the People's Republic of Bangladesh  
-            National ID Card  
-            JTA  
-            Name: JUIEAL CHANDRANATH  
-            Date of Birth: 10 May 1983  
-            NID NO: 5963485064
-        """
-    run_test(ocr_text_1, "Standard Format Test")
+    ocr_text_2 = """
+    Government of the People's Republic of Bangladesh
+    National ID Card
+    JTA
+    Name: JUIEAL CHANDRANATH
+    Date of Birth: 10 May 1983
+    NID NO: 5963485064
+    """
+    run_test(ocr_text_2, "Standard Format Test")
 

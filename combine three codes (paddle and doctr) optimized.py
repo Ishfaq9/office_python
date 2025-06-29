@@ -120,8 +120,30 @@ def infer_name_from_lines(text, extracted_fields):
                 extracted_fields['Name'] = lines[i + 1]
     return extracted_fields
 
+# def extract_fields_code1(text):
+#     extracted = {}
+#     for key, pattern in fields_code1.items():
+#         match = pattern.search(text)
+#         if match:
+#             value = match.group(1).strip()
+#             if not value:
+#                 extracted[key] = "Not found"
+#                 continue
+#             if key == 'IDNO':
+#                 value = value.replace(" ", "")
+#             if len(value.split()) == 1 and len(value) < 3:
+#                 extracted[key] = "Not found"
+#             else:
+#                 extracted[key] = value
+#         else:
+#             extracted[key] = "Not found"
+#     return extracted
+
 def extract_fields_code1(text):
     extracted = {}
+    # Regex for 10, 13, or 17 digit numbers
+    digit_pattern = re.compile(r'\b(?:(?:\d[\d\s\-@#]*?){10}|(?:\d[\d\s\-@#]*?){13}|(?:\d[\d\s\-@#]*?){17})\b', re.MULTILINE)
+
     for key, pattern in fields_code1.items():
         match = pattern.search(text)
         if match:
@@ -131,12 +153,23 @@ def extract_fields_code1(text):
                 continue
             if key == 'IDNO':
                 value = value.replace(" ", "")
-            if len(value.split()) == 1 and len(value) < 3:
+                if not re.match(r'^\d{10}$|^\d{13}$|^\d{17}$', value):
+                    extracted[key] = "Not found"
+                else:
+                    extracted[key] = value
+            elif len(value.split()) == 1 and len(value) < 3:
                 extracted[key] = "Not found"
             else:
                 extracted[key] = value
         else:
             extracted[key] = "Not found"
+
+    # If IDNO not found, check for standalone 10, 13, or 17 digit number
+    if extracted['IDNO'] == "Not found":
+        digit_match = digit_pattern.search(text)
+        if digit_match:
+            extracted['IDNO'] = digit_match.group(0)
+
     return extracted
 
 # Code 2 Functions (unchanged except for preprocessing)
@@ -408,6 +441,7 @@ def clean_date_of_birth(date):
     return "Invalid"
 
 def clean_id_no(id_no):
+    print('id number:',id_no)
     if not id_no or id_no == "Not found":
         return "Not found"
     cleaned = re.sub(r"[^0-9]", "", id_no).strip()
@@ -415,10 +449,13 @@ def clean_id_no(id_no):
         return cleaned
     return "Invalid"
 
+
 def extract_fields_code2(text):
     extracted = {key: "Not found" for key in fields_code2}
     text = clean_ocr_text(text)
     text = merge_lines(text)
+    # Regex for 10, 13, or 17 digit numbers
+    digit_pattern = re.compile(r'\b(?:(?:\d[\d\s\-@#]*?){10}|(?:\d[\d\s\-@#]*?){13}|(?:\d[\d\s\-@#]*?){17})\b', re.MULTILINE)
 
     for key, pattern in fields_code2.items():
         match = pattern.search(text)
@@ -431,6 +468,12 @@ def extract_fields_code2(text):
                 extracted[key] = "Not found"
             else:
                 extracted[key] = value
+
+    # If IDNO not found, check for standalone 10, 13, or 17 digit number
+    if extracted['IDNO'] == "Not found":
+        digit_match = digit_pattern.search(text)
+        if digit_match:
+            extracted['IDNO'] = digit_match.group(0)
 
     lines = text.splitlines()
     name_index = -1
@@ -448,13 +491,19 @@ def extract_fields_code2(text):
                     name_index == -1 or i > name_index):
                 extracted["Name"] = line
             elif re.match(r"[^\x00-\x7F]+", line) and extracted["পিতা"] == "Not found":
-                if (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted["Name"] in lines else True) or \
-                        (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted["নাম"] in lines else i > name_index):
+                if (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted[
+                                                                                                   "Name"] in lines else True) or \
+                        (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted[
+                                                                                                      "নাম"] in lines else i > name_index):
                     extracted["পিতা"] = line
-            elif re.match(r"[^\x00-\x7F]+", line) and extracted["মাতা"] == "Not found" and extracted["পিতা"] != "Not found":
-                if (extracted["পিতা"] != "Not found" and i > lines.index(extracted["পিতা"]) if extracted["পিতা"] in lines else True) or \
-                        (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted["Name"] in lines else True) or \
-                        (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted["নাম"] in lines else i > name_index):
+            elif re.match(r"[^\x00-\x7F]+", line) and extracted["মাতা"] == "Not found" and extracted[
+                "পিতা"] != "Not found":
+                if (extracted["পিতা"] != "Not found" and i > lines.index(extracted["পিতা"]) if extracted[
+                                                                                                   "পিতা"] in lines else True) or \
+                        (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted[
+                                                                                                        "Name"] in lines else True) or \
+                        (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted[
+                                                                                                      "নাম"] in lines else i > name_index):
                     extracted["মাতা"] = line
 
     extracted["নাম"] = clean_bangla_name(extracted["নাম"])
@@ -474,6 +523,65 @@ def extract_fields_code2(text):
         extracted["Name"] = "Not found"
 
     return extracted
+# def extract_fields_code2(text):
+#     extracted = {key: "Not found" for key in fields_code2}
+#     text = clean_ocr_text(text)
+#     text = merge_lines(text)
+#
+#     for key, pattern in fields_code2.items():
+#         match = pattern.search(text)
+#         if match:
+#             value = match.group(1).strip()
+#             if not value:
+#                 extracted[key] = "Not found"
+#                 continue
+#             if len(value.split()) == 1 and len(value) < 3:
+#                 extracted[key] = "Not found"
+#             else:
+#                 extracted[key] = value
+#
+#     lines = text.splitlines()
+#     name_index = -1
+#     for i, line in enumerate(lines):
+#         line = line.strip()
+#         if not line:
+#             continue
+#         if len(line.split()) == 1 and len(line) < 3:
+#             continue
+#         if not any(pattern.search(line) for pattern in fields_code2.values()):
+#             if re.match(r"[^\x00-\x7F]+", line) and extracted["নাম"] == "Not found":
+#                 extracted["নাম"] = line
+#                 name_index = i
+#             elif re.match(r"[A-Za-z\s\.]+", line) and extracted["Name"] == "Not found" and (
+#                     name_index == -1 or i > name_index):
+#                 extracted["Name"] = line
+#             elif re.match(r"[^\x00-\x7F]+", line) and extracted["পিতা"] == "Not found":
+#                 if (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted["Name"] in lines else True) or \
+#                         (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted["নাম"] in lines else i > name_index):
+#                     extracted["পিতা"] = line
+#             elif re.match(r"[^\x00-\x7F]+", line) and extracted["মাতা"] == "Not found" and extracted["পিতা"] != "Not found":
+#                 if (extracted["পিতা"] != "Not found" and i > lines.index(extracted["পিতা"]) if extracted["পিতা"] in lines else True) or \
+#                         (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted["Name"] in lines else True) or \
+#                         (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted["নাম"] in lines else i > name_index):
+#                     extracted["মাতা"] = line
+#
+#     extracted["নাম"] = clean_bangla_name(extracted["নাম"])
+#     extracted["পিতা"] = clean_bangla_name(extracted["পিতা"])
+#     extracted["মাতা"] = clean_bangla_name(extracted["মাতা"])
+#     extracted["স্বামী"] = clean_bangla_name(extracted["স্বামী"])
+#     extracted["স্ত্রী"] = clean_bangla_name(extracted["স্ত্রী"])
+#     extracted["Name"] = clean_english_name(extracted["Name"])
+#     extracted["DateOfBirth"] = clean_date_of_birth(extracted["DateOfBirth"])
+#     extracted["IDNO"] = clean_id_no(extracted["IDNO"])
+#
+#     fields_to_validate = ['নাম', 'পিতা', 'মাতা', 'স্বামী', 'স্ত্রী']
+#     for field in fields_to_validate:
+#         if contains_english(extracted[field]):
+#             extracted[field] = "Not found"
+#     if contains_bangla(extracted["Name"]):
+#         extracted["Name"] = "Not found"
+#
+#     return extracted
 
 # def remove_special_chars(text, field):
 #     if text == "Not found" or not text:
@@ -606,12 +714,12 @@ def compare_outputs(t1, t2, t3, p1, field):
         else:
             outputs_final.append(val)
 
-    # print("\n================= OCR COMPARISON =================")
-    # print(f"{'':<17} t1                        | t2                        | t3                        | p1")
-    # print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]:<25} | {outputs_raw[3]}")
-    # print(
-    #     f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]:<25} | {outputs_final[3]}")
-    # print("==================================================\n")
+    print("\n================= OCR COMPARISON =================")
+    print(f"{'':<17} t1                        | t2                        | t3                        | p1")
+    print(f"{'Raw Outputs':<17}: {outputs_raw[0]:<25} | {outputs_raw[1]:<25} | {outputs_raw[2]:<25} | {outputs_raw[3]}")
+    print(
+        f"{'Cleaned Outputs':<17}: {outputs_final[0]:<25} | {outputs_final[1]:<25} | {outputs_final[2]:<25} | {outputs_final[3]}")
+    print("==================================================\n")
 
     if all(val == "Not found" for val in outputs_final):
         return "Not found"
@@ -693,7 +801,7 @@ def process_image(image_path):
         raise ValueError(f"Failed to load image at {image_path}")
 
     easyocr_text1 = get_easyocr_text(image_path)
-    # print(easyocr_text1)
+    print(easyocr_text1)
     easyocr_text1 = clean_header_text(easyocr_text1)
     easyocr_results1 = extract_fields_code1(easyocr_text1)
     easyocr_results1 = infer_name_from_lines(easyocr_text1, easyocr_results1)
@@ -713,19 +821,19 @@ def process_image(image_path):
     # Code 2 Processing with Preprocessing
     preprocessed_img, _ = preprocess_before_crop(rotated_img)
     easyocr_text2 = get_easyocr_text(preprocessed_img)
-    #print("EasyOCR Deskewed Text:", easyocr_text2)
+    print("EasyOCR Deskewed Text:", easyocr_text2)
     easyocr_results2 = extract_fields_code2(easyocr_text2)
 
 
     # Code 3 Processing with Preprocessing (just rotate)
     easyocr_text3 = get_easyocr_text(rotated_img)
-    # print(easyocr_text3)
+    print(easyocr_text3)
     easyocr_text3 = clean_header_text(easyocr_text3)
     easyocr_results3 = extract_fields_code1(easyocr_text3)
     easyocr_results3 = infer_name_from_lines(easyocr_text3, easyocr_results3)
 
     paddle_text1 = get_paddle_ocr(img_cv2)
-    # print(paddle_text1)
+    print(paddle_text1)
     paddle_text1 = clean_header_text(paddle_text1)
     paddle_results1 = extract_fields_code2(paddle_text1)
     paddle_results1 = infer_name_from_lines(paddle_text1, paddle_results1)
@@ -768,7 +876,7 @@ def process_image(image_path):
 #         raise HTTPException(status_code=500, detail=str(e))
 
 # Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/NID_15.png"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/2.png"
 final_results = process_image(image_path)
 
 # Example Usage
