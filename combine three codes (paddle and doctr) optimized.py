@@ -38,6 +38,7 @@ ocr = PaddleOCR(
     rec_model_dir=rec_model_dir_path,
     cls_model_dir=cls_model_dir_path
 )
+
 predictor = ocr_predictor(pretrained=True, det_arch='db_resnet50', reco_arch='crnn_vgg16_bn')
 
 
@@ -93,6 +94,31 @@ fields_code2 = {
 
 }
 
+def extract_id_after_date(text):
+    print("Raw text:", text)
+    # Regex to match a date (DD MMM YYYY) followed by a 10, 13, or 17-digit ID (with optional spaces, dashes, etc.)
+    combined_pattern = re.compile(
+        r'(?:\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{4}\b\s*[^0-9]*((?:\d[-\s@#]*?){10,17}(?=\b)))|((?:\d[-\s@#]*?){10,17}(?=\b))',
+        re.IGNORECASE | re.DOTALL
+    )
+    match = combined_pattern.search(text)
+    if match:
+        # Use group(1) if date pattern exists, otherwise group(2) for standalone ID
+        raw_id = match.group(1) if match.group(1) else match.group(2)
+        print("Raw ID:", raw_id)
+        # Clean the ID by removing non-digit characters
+        cleaned_id = re.sub(r'[-\s@#]', '', raw_id)
+        print("Cleaned ID:", cleaned_id)
+        # Verify the length of the cleaned ID
+        if len(cleaned_id) in [10, 13, 17]:
+            return cleaned_id
+        else:
+            print(f"Invalid ID length: {len(cleaned_id)} digits")
+            return None
+    print("No valid ID found")
+    return None
+
+
 # if __name__ == "__main__":
 #    import uvicorn
 #    uvicorn.run(app, host="0.0.0.0", port=8000)
@@ -141,9 +167,6 @@ def infer_name_from_lines(text, extracted_fields):
 
 def extract_fields_code1(text):
     extracted = {}
-    # Regex for 10, 13, or 17 digit numbers
-    digit_pattern = re.compile(r'\b(?:(?:\d[\d\s\-@#]*?){10}|(?:\d[\d\s\-@#]*?){13}|(?:\d[\d\s\-@#]*?){17})\b', re.MULTILINE)
-
     for key, pattern in fields_code1.items():
         match = pattern.search(text)
         if match:
@@ -153,22 +176,17 @@ def extract_fields_code1(text):
                 continue
             if key == 'IDNO':
                 value = value.replace(" ", "")
-                if not re.match(r'^\d{10}$|^\d{13}$|^\d{17}$', value):
-                    extracted[key] = "Not found"
-                else:
-                    extracted[key] = value
-            elif len(value.split()) == 1 and len(value) < 3:
+            if len(value.split()) == 1 and len(value) < 3:
                 extracted[key] = "Not found"
             else:
                 extracted[key] = value
         else:
             extracted[key] = "Not found"
 
-    # If IDNO not found, check for standalone 10, 13, or 17 digit number
     if extracted['IDNO'] == "Not found":
-        digit_match = digit_pattern.search(text)
-        if digit_match:
-            extracted['IDNO'] = digit_match.group(0)
+        id_from_text = extract_id_after_date(text)
+        if id_from_text:
+            extracted['IDNO'] = id_from_text
 
     return extracted
 
@@ -286,6 +304,12 @@ def preprocess_before_crop(img):
 
 def get_tesseract_ocr(image):#
     return ''
+
+def format_raw_to_single_line(raw_text):
+    # Split text into lines, remove empty lines, and strip whitespace
+    lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
+    # Join all lines with a space
+    return ' '.join(lines)
 
 def get_paddle_ocr(image):
     results = ocr.ocr(image, cls=True)
@@ -454,8 +478,12 @@ def extract_fields_code2(text):
     extracted = {key: "Not found" for key in fields_code2}
     text = clean_ocr_text(text)
     text = merge_lines(text)
-    # Regex for 10, 13, or 17 digit numbers
-    digit_pattern = re.compile(r'\b(?:(?:\d[\d\s\-@#]*?){10}|(?:\d[\d\s\-@#]*?){13}|(?:\d[\d\s\-@#]*?){17})\b', re.MULTILINE)
+
+    # digit_pattern = re.compile(
+    #     r'(?:\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{4})\s+'
+    #     r'((?:\d[\d\s-@#]*?){10}(?=\b)|(?:\d[\d\s-@#]*?){13}(?=\b)|(?:\d[\d\s-@#]*?){17}(?=\b))',
+    #     re.IGNORECASE
+    # )
 
     for key, pattern in fields_code2.items():
         match = pattern.search(text)
@@ -470,10 +498,15 @@ def extract_fields_code2(text):
                 extracted[key] = value
 
     # If IDNO not found, check for standalone 10, 13, or 17 digit number
+    # if extracted['IDNO'] == "Not found":
+    #     digit_match = digit_pattern.search(text)
+    #     if digit_match:
+    #         extracted['IDNO'] = digit_match.group(0)
+
     if extracted['IDNO'] == "Not found":
-        digit_match = digit_pattern.search(text)
-        if digit_match:
-            extracted['IDNO'] = digit_match.group(0)
+        id_from_text = extract_id_after_date(text)
+        if id_from_text:
+            extracted['IDNO'] = id_from_text
 
     lines = text.splitlines()
     name_index = -1
@@ -491,19 +524,13 @@ def extract_fields_code2(text):
                     name_index == -1 or i > name_index):
                 extracted["Name"] = line
             elif re.match(r"[^\x00-\x7F]+", line) and extracted["পিতা"] == "Not found":
-                if (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted[
-                                                                                                   "Name"] in lines else True) or \
-                        (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted[
-                                                                                                      "নাম"] in lines else i > name_index):
+                if (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted["Name"] in lines else True) or \
+                        (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted["নাম"] in lines else i > name_index):
                     extracted["পিতা"] = line
-            elif re.match(r"[^\x00-\x7F]+", line) and extracted["মাতা"] == "Not found" and extracted[
-                "পিতা"] != "Not found":
-                if (extracted["পিতা"] != "Not found" and i > lines.index(extracted["পিতা"]) if extracted[
-                                                                                                   "পিতা"] in lines else True) or \
-                        (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted[
-                                                                                                        "Name"] in lines else True) or \
-                        (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted[
-                                                                                                      "নাম"] in lines else i > name_index):
+            elif re.match(r"[^\x00-\x7F]+", line) and extracted["মাতা"] == "Not found" and extracted["পিতা"] != "Not found":
+                if (extracted["পিতা"] != "Not found" and i > lines.index(extracted["পিতা"]) if extracted["পিতা"] in lines else True) or \
+                        (extracted["Name"] != "Not found" and i > lines.index(extracted["Name"]) if extracted["Name"] in lines else True) or \
+                        (extracted["নাম"] != "Not found" and i > lines.index(extracted["নাম"]) if extracted["নাম"] in lines else i > name_index):
                     extracted["মাতা"] = line
 
     extracted["নাম"] = clean_bangla_name(extracted["নাম"])
@@ -833,9 +860,9 @@ def process_image(image_path):
     easyocr_results3 = infer_name_from_lines(easyocr_text3, easyocr_results3)
 
     paddle_text1 = get_paddle_ocr(img_cv2)
-    print(paddle_text1)
+    paddle_text1=format_raw_to_single_line(paddle_text1)
     paddle_text1 = clean_header_text(paddle_text1)
-    paddle_results1 = extract_fields_code2(paddle_text1)
+    paddle_results1 = extract_fields_code1(paddle_text1)
     paddle_results1 = infer_name_from_lines(paddle_text1, paddle_results1)
 
 
@@ -876,7 +903,7 @@ def process_image(image_path):
 #         raise HTTPException(status_code=500, detail=str(e))
 
 # Example Usage
-image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/2.png"
+image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/06-30-2025/8801928423630.png"
 final_results = process_image(image_path)
 
 # Example Usage
