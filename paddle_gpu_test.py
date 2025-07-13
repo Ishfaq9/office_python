@@ -1,5 +1,5 @@
 import binascii
-
+import logging
 from paddleocr import PaddleOCR
 import base64
 import os
@@ -14,6 +14,9 @@ from doctr.io import DocumentFile
 from doctr.models import ocr_predictor
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from paddleocr import PaddleOCR
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 CUSTOM_CACHE_DIR = "C:/TempfileForDoctr"
 
@@ -29,17 +32,30 @@ os.environ["MPLCONFIGDIR"] = CUSTOM_CACHE_DIR
 os.environ["DOCTR_CACHE_DIR"] = CUSTOM_CACHE_DIR
 
 # Initialize PaddleOCR with these precise model directory paths
-ocr = PaddleOCR(
-    device="gpu:0",
-    #lang="en",
-    text_detection_model_dir="C:/paddle_model/PP-OCRv5_server_det",
-    text_recognition_model_dir="C:/paddle_model/PP-OCRv5_server_rec",
-    textline_orientation_model_dir=None,
-    use_doc_orientation_classify=False,
-    use_doc_unwarping=False,
-    use_textline_orientation=False,
-    #text_det_limit_side_len=7000
-)
+try:
+    ocr = PaddleOCR(
+        device="gpu:0",
+        lang="en",
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+        use_textline_orientation=False
+    )
+    device = 'GPU'
+    logger.info("PaddleOCR initialized on GPU")
+except Exception as e:
+    logger.warning(f"GPU initialization failed: {e}, falling back to CPU")
+    ocr = PaddleOCR(
+        lang="en",
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+        use_textline_orientation=False
+    )
+    device = 'CPU'
+    logger.info("PaddleOCR initialized on CPU")
+
+model = 'PP-OCRv5'
+logger.info(f"Using device: {device}, model: {model}")
+
 
 # model load doctr
 predictor = ocr_predictor(pretrained=True, det_arch='db_resnet50', reco_arch='crnn_vgg16_bn')
@@ -88,16 +104,12 @@ def get_dcotr_ocr(image_input):
 def get_paddle_ocr(image):
     all_text = ""
     try:
-        results = ocr.predict(image)
-        all_text = ""
-        if results and isinstance(results, list):
-            for page in results:
-                if page and isinstance(page, dict):
-                    rec_texts = page.get('rec_texts', [])
-                    for text in rec_texts:
-                        if text and text.strip():
-                            all_text += text.strip() + "\n"
-        return all_text.strip()
+        results = ocr.ocr(image, cls=True)
+        for line in results[0]:
+            text = line[1][0]
+            all_text += text + "\n"
+        # all_text=' '.join([line[1][0] for block in results for line in block]) if results and results[0] else ""
+        return all_text
     except Exception:
         return all_text
 
@@ -167,6 +179,11 @@ def process_raw_data(text):
     return extracted
 
 
+
+app = FastAPI()
+class ImageData(BaseModel):
+    image_base64: str
+
 def process_image(image_path):
     img_cv2 = cv2.imread(image_path)
     if img_cv2 is None:
@@ -186,7 +203,8 @@ def process_image(image_path):
 
     final_name = {}
     if paddle_result['Name'].replace(" ", "") == docrt_result['Name'].replace(" ", ""):
-        if paddle_result['Name'].count(" ") > docrt_result['Name'].count(" "):
+
+        if len(paddle_result['Name']) > len(docrt_result['Name']):
             final_name['Name'] = paddle_result['Name']
         else:
             final_name['Name'] = docrt_result['Name']
@@ -198,7 +216,6 @@ def process_image(image_path):
         else:
             final_name['Name'] = docrt_result['Name']
 
-    final_name['Name']=paddle_result['Name']
     final_name['DateOfBirth'] = paddle_result['DateOfBirth'] or docrt_result['DateOfBirth'] or ""
     final_name['IDNO'] = paddle_result['IDNO'] or docrt_result['IDNO'] or ""
     final_name['পিতা'] = ""
@@ -209,10 +226,6 @@ def process_image(image_path):
 
     return final_name
 
-
-app = FastAPI()
-class ImageData(BaseModel):
-    image_base64: str
 
 
 @app.post("/extract-fields/")

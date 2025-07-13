@@ -4,6 +4,9 @@ from paddleocr import PaddleOCR
 import base64
 import os
 import tempfile
+from PIL import Image
+import base64
+from io import BytesIO
 import cv2
 import numpy as np
 import re
@@ -46,17 +49,6 @@ os.makedirs(CUSTOM_CACHE_DIR, exist_ok=True)
     #show_log=True  # Enable logs for debugging
 #)
 
-# ocr = PaddleOCR(
-#     device="gpu:0",
-#     #lang="en",
-#     text_detection_model_dir="C:/paddle_model/PP-OCRv5_server_det",
-#     text_recognition_model_dir="C:/paddle_model/PP-OCRv5_server_rec",
-#     textline_orientation_model_dir=None,
-#     use_doc_orientation_classify=False,
-#     use_doc_unwarping=False,
-#     use_textline_orientation=False,
-#     text_det_limit_side_len=4000
-# )
 ocr = PaddleOCR(
     device="gpu",
     #lang="en",
@@ -69,7 +61,6 @@ ocr = PaddleOCR(
     use_textline_orientation=False,
     #text_det_limit_side_len=4000
 )
-
 
 # model load doctr
 # predictor = ocr_predictor(pretrained=True, det_arch='db_resnet50', reco_arch='crnn_vgg16_bn')
@@ -131,10 +122,33 @@ def get_paddle_ocr(image):
         return all_text
 
 
+def resize_image_in_memory(input_data):
+    if isinstance(input_data, str):
+        img = Image.open(input_data).convert('RGB')
+    elif isinstance(input_data, BytesIO):
+        img = Image.open(input_data).convert('RGB')
+    else:
+        raise ValueError("Input must be a file path or BytesIO object.")
+
+    original_width, original_height = img.size
+    longest_side = max(original_width, original_height)
+
+    if longest_side <= 2000:
+        return img
+    elif longest_side <= 4000:
+        scale_factor = 0.7
+    elif longest_side <= 100000:
+        scale_factor = 0.5
+    else:
+        raise ValueError("Image dimensions exceed 100000 pixels.")
+
+    new_width = int(original_width * scale_factor)
+    new_height = int(original_height * scale_factor)
+    resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    return resized_img
 
 
-
-def extract_name_from_paddleOcr(raw_data: str) -> str | "":
+def extract_name_from_paddleOcr(raw_data: str) -> str | None:
    lines = [line.strip() for line in raw_data.strip().split('\n')]
    name_line_index = -1
 
@@ -174,7 +188,6 @@ def extract_name_from_paddleOcr(raw_data: str) -> str | "":
                    return previous_line
 
    return ""
-
 
 
 
@@ -248,6 +261,18 @@ def process_raw_data(text):
     return extracted
 
 
+
+
+
+def process_image_raw(image_path):
+    img_cv2 = cv2.imread(image_path)
+    if img_cv2 is None:
+        raise ValueError(f"Failed to load image at {image_path}")
+
+    # for paddle process
+    paddle_text1 = get_paddle_ocr(img_cv2)
+    return paddle_text1
+
 def process_image(image_path):
     img_cv2 = cv2.imread(image_path)
     if img_cv2 is None:
@@ -303,9 +328,15 @@ async def extract_fields(data: ImageData):
         # Decode base64 to image
         image_bytes = base64.b64decode(data.image_base64)
 
-        # Save to temporary file
+        # Convert bytes to PIL Image for resizing
+        #img = Image.open(BytesIO(image_bytes)).convert('RGB')
+
+        # Resize the image using your resize function
+        resized_img = resize_image_in_memory(BytesIO(image_bytes))
+
+        # Save resized image to temporary file
         with tempfile.NamedTemporaryFile(dir="C:/TempfileForDoctr", suffix=".png", delete=False) as temp_file:
-            temp_file.write(image_bytes)
+            resized_img.save(temp_file, format="PNG")
             temp_file_path = temp_file.name
 
         # Process the image with the custom processing function
@@ -323,7 +354,37 @@ async def extract_fields(data: ImageData):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/extract-raw/")
+async def extract_fields(data: ImageData):
+    try:
+        # Decode base64 to image
+        image_bytes = base64.b64decode(data.image_base64)
 
+        # Convert bytes to PIL Image for resizing
+        #img = Image.open(BytesIO(image_bytes)).convert('RGB')
+
+        # Resize the image using your resize function
+        resized_img = resize_image_in_memory(BytesIO(image_bytes))
+
+        # Save resized image to temporary file
+        with tempfile.NamedTemporaryFile(dir="C:/TempfileForDoctr", suffix=".png", delete=False) as temp_file:
+            resized_img.save(temp_file, format="PNG")
+            temp_file_path = temp_file.name
+
+        # Process the image with the custom processing function
+        result = process_image_raw(temp_file_path)
+
+        # Delete the temporary file
+        os.unlink(temp_file_path)
+
+        return result
+
+    except binascii.Error:
+        raise HTTPException(status_code=400, detail="Invalid base64 encoding")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # image_path = "C:/Users/ishfaq.rahman/Desktop/NID Images/New Images/7-Jul-2025/3.png"
 # result = process_image(image_path)
