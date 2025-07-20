@@ -1,23 +1,19 @@
+
 import binascii
+from PIL import Image
+from io import BytesIO
+import base64
 import os
 import tempfile
-
-import numpy as np
-from PIL import Image
-import base64
-from io import BytesIO
 import cv2
+import numpy as np
 import re
+import warnings
 from datetime import datetime
+from doctr.io import DocumentFile
 from doctr.models import ocr_predictor
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import os
-from doctr.io import DocumentFile
-from doctr.models import ocr_predictor
-import torch
-
-os.environ["USE_TORCH"] = "1"
 
 CUSTOM_CACHE_DIR = "C:/TempfileForDoctr"
 
@@ -29,71 +25,23 @@ CUSTOM_CACHE_DIR = "C:/TempfileForDoctr"
 os.makedirs(CUSTOM_CACHE_DIR, exist_ok=True)
 
 # Set environment variables for Matplotlib and DocTR
-# os.environ["MPLCONFIGDIR"] = CUSTOM_CACHE_DIR
-# os.environ["DOCTR_CACHE_DIR"] = CUSTOM_CACHE_DIR
-
-# Ensure DocTR uses CPU
-# torch.set_default_device('cpu')
+os.environ["MPLCONFIGDIR"] = CUSTOM_CACHE_DIR
+os.environ["DOCTR_CACHE_DIR"] = CUSTOM_CACHE_DIR
 
 # Initialize PaddleOCR with these precise model directory paths
 # ocr = PaddleOCR(
-#     device="gpu:0",
-    #lang="en",
-    #use_angle_cls=True,  # Enable angle classification for text lines
-    #use_textline_orientation=True,  # Enable text line orientation
-    #text_detection_model_dir="C:/paddle_model/PP-OCRv5_server_det",
-    #ext_recognition_model_dir="C:/paddle_model/PP-OCRv5_server_rec",
-    #textline_orientation_model_dir="C:/paddle_model/PP-LCNet_x1_0_textline_ori",
-    #doc_orientation_model_dir="C:/paddle_model/PP-LCNet_x1_0_doc_ori",
-    #use_doc_orientation_classify=True,
-    #use_doc_unwarping=False,  # Disable unwarping if not needed
-    #show_log=True  # Enable logs for debugging
-#)
-
-# ocr = PaddleOCR(
-#     device="gpu",
-#     #lang="en",
-#     ocr_version="PP-OCRv4",
-#     text_detection_model_dir="C:/paddle_model/PP-OCRv5_server_det",
-#     text_recognition_model_dir="C:/paddle_model/PP-OCRv5_server_rec",
-#     #textline_orientation_model_dir=None,
-#     use_doc_orientation_classify=False,
-#     use_doc_unwarping=False,
-#     use_textline_orientation=False,
-#     #text_det_limit_side_len=4000
+#     use_angle_cls=True,
+#     lang='en',  # Keep lang='en' as your det and rec models are English
+#     use_gpu=False,
+#     show_log=False,
+#     det_model_dir=det_model_dir_path,
+#     rec_model_dir=rec_model_dir_path,
+#     cls_model_dir=cls_model_dir_path
 # )
-
-
-
-# cls_model_dir_path = "C:/paddle_model/ch_ppocr_mobile_v2.0_cls_infer"
-#
-# # Initialize PaddleOCR GPU with orientation correction
-# ocr = PaddleOCR(
-#     device="gpu",
-#     lang="en",  # Add lang='en' to match your CPU setup
-#     ocr_version="PP-OCRv4",  # Use PP-OCRv4 for consistency
-#     text_detection_model_dir="C:/paddle_model/PP-OCRv5_server_det",
-#     text_recognition_model_dir="C:/paddle_model/PP-OCRv5_server_rec",
-#     cls_model_dir=cls_model_dir_path,  # Add the classifier model
-#     use_angle_cls=True,  # Enable orientation classification
-#     use_doc_orientation_classify=True,  # Enable document-level orientation
-#     use_textline_orientation=True,  # Enable text line orientation correction
-#     show_log=False
-# )
-import uvicorn
-
-
-
 
 # model load doctr
-predictor = ocr_predictor(det_arch='db_resnet50', reco_arch='parseq', pretrained=True).to('cuda')
-# predictor = ocr_predictor(
-#     det_arch='db_resnet50',
-#     reco_arch='crnn_vgg16_bn',  # Keep parseq, but test crnn_vgg16_bn if issues persist
-#     pretrained=True,
-#     assume_straight_pages=False
-# ).to('cuda')
-# warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
+predictor = ocr_predictor(pretrained=True, det_arch='db_resnet50', reco_arch='crnn_vgg16_bn')
+warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
 
 
 def get_dcotr_ocr(image_input):
@@ -165,9 +113,9 @@ def resize_image_in_memory(input_data):
     if longest_side <= 2000:
         return img
     elif longest_side <= 4000:
-        scale_factor = 0.7
+        scale_factor = 0.8
     elif longest_side <= 100000:
-        scale_factor = 0.5
+        scale_factor = 0.6
     else:
         raise ValueError("Image dimensions exceed 100000 pixels.")
 

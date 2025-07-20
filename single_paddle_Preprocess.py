@@ -17,9 +17,9 @@ from paddleocr import PaddleOCR
 #     print(json.dumps({"error": "Image path is required"}))
 #     sys.exit(1)
 
-# det_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/det/en/en_PP-OCRv3_det_infer"
-# rec_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/rec/en/en_PP-OCRv4_rec_infer"
-# cls_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/cls/ch_ppocr_mobile_v2.0_cls_infer"
+det_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/det/en/en_PP-OCRv3_det_infer"
+rec_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/rec/en/en_PP-OCRv4_rec_infer"
+cls_model_dir_path = "D:/my_paddleocr_models/.paddleocr/whl/cls/ch_ppocr_mobile_v2.0_cls_infer"
 
 warnings.filterwarnings("ignore", category=UserWarning, module="paddle.utils.cpp_extension")
 
@@ -29,9 +29,9 @@ ocr = PaddleOCR(
     lang='en', # Keep lang='en' as your det and rec models are English
     use_gpu=False,
     show_log=False,
-    # det_model_dir=det_model_dir_path,
-    # rec_model_dir=rec_model_dir_path,
-    # cls_model_dir=cls_model_dir_path
+    det_model_dir=det_model_dir_path,
+    rec_model_dir=rec_model_dir_path,
+    cls_model_dir=cls_model_dir_path
 )
 
 
@@ -585,3 +585,5 @@ final_results = process_image(image_path)
 #         print(f"\nProcessing image: {filename}")
 #
 #         final_results = process_image(image_path)
+
+#paddle.device.cuda.empty_cache()
